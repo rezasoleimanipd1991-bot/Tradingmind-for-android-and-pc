@@ -93,6 +93,12 @@ export interface Trade {
   result: 'win' | 'loss' | 'breakeven' | 'partial-win' | 'partial-loss' | 'open' | 'cancelled';
   profitLoss: number | null;
   fees: number | null;
+  /** کمیسیون صریح معامله؛ هزینه نهایی از fees + commission + spread محاسبه می‌شود. */
+  commission?: number | null;
+  /** هزینه اسپرد به واحد پول حساب. */
+  spread?: number | null;
+  /** شماره تیکت/ثبت معامله در متاتریدر یا بروکر. */
+  ticketNumber?: string | null;
   status: 'open' | 'closed' | 'cancelled';
   openedAt: number;
   closedAt: number | null;

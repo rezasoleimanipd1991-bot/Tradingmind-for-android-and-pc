@@ -22,6 +22,7 @@ import { TradeScreenshot } from "../types/screenshot";
 import { getTradingDateTimeInput, parseTradingDateTimeInput } from "../lib/tradingTime";
 import { detectTradingSession } from "../lib/tradeClassification";
 import { useNavigationGuard, useGuardedNavigation } from "../navigation/NavigationGuard";
+import { getTradeNetPnl } from "../lib/tradeClassification";
 
 const MARKETS = ['Forex', 'Crypto', 'Indices', 'Stocks', 'Commodities', 'Other'];
 
@@ -100,6 +101,7 @@ const QUICK_SYMBOLS = [
   { value: 'NZDUSD', label: 'دلار نیوزیلند به دلار', market: 'Forex' },
 ];
 const CUSTOM_SYMBOLS_KEY = 'tradermind-custom-symbols';
+const CUSTOM_SETUPS_KEY = 'tradermind-custom-setups';
 
 function getCustomSymbols(): { label: string; value: string; market: string }[] {
   try {
@@ -108,6 +110,17 @@ function getCustomSymbols(): { label: string; value: string; market: string }[] 
     return values.filter((item): item is { label: string; value: string; market: string } =>
       item && typeof item.value === 'string' && typeof item.label === 'string'
     );
+  } catch {
+    return [];
+  }
+}
+
+function getCustomSetups(): string[] {
+  try {
+    const values = JSON.parse(localStorage.getItem(CUSTOM_SETUPS_KEY) ?? '[]');
+    return Array.isArray(values)
+      ? values.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      : [];
   } catch {
     return [];
   }
@@ -184,6 +197,32 @@ function NumericInput({
         onValueChange(nextValue);
       }}
       dir="ltr"
+    />
+  );
+}
+
+function StableTextarea({
+  value,
+  onChange,
+  ...props
+}: ComponentProps<typeof Textarea>) {
+  const externalValue = typeof value === 'string' ? value : '';
+  const [text, setText] = useState(externalValue);
+
+  useEffect(() => {
+    // فقط وقتی مقدار واقعاً از بیرون تغییر کرده است همگام‌سازی کن.
+    // این کار از بازنشانی caret هنگام هر رندر فرم جلوگیری می‌کند.
+    if (externalValue !== text) setText(externalValue);
+  }, [externalValue, text]);
+
+  return (
+    <Textarea
+      {...props}
+      value={text}
+      onChange={event => {
+        setText(event.target.value);
+        onChange?.(event);
+      }}
     />
   );
 }
@@ -279,6 +318,30 @@ function SymbolSelector({ value, onChange }: { value: string; onChange: (v: stri
           افزودن
         </Button>
       </div>
+      {customSymbols.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 pt-1">
+          {customSymbols.map(symbol => (
+            <div key={symbol.value} className="flex items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 py-1 text-xs">
+              <button type="button" onClick={() => onChange(symbol.value)} className="text-primary hover:underline">
+                {symbol.value}
+              </button>
+              <button
+                type="button"
+                aria-label={`حذف نماد ${symbol.value}`}
+                onClick={() => {
+                  const next = customSymbols.filter(item => item.value !== symbol.value);
+                  setCustomSymbols(next);
+                  localStorage.setItem(CUSTOM_SYMBOLS_KEY, JSON.stringify(next));
+                  if (displayValue === symbol.value) onChange('');
+                }}
+                className="text-muted-foreground hover:text-destructive"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -321,6 +384,8 @@ export default function NewTrade() {
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [tradingBoxes, setTradingBoxes] = useState<TradingBox[]>([]);
+  const [customSetups, setCustomSetups] = useState<string[]>(getCustomSetups);
+  const [customSetupInput, setCustomSetupInput] = useState('');
   // ورودی متن جداست تا مقدارهای میانی مثل «۰.» هنگام تایپ با رندر مجدد پاک نشوند.
   const [positionSizeInput, setPositionSizeInput] = useState('');
   const [riskPercentageInput, setRiskPercentageInput] = useState('');
@@ -571,6 +636,7 @@ export default function NewTrade() {
   const review = trade ? JSON.parse(trade.review || '{}') : {};
   const tags = trade ? JSON.parse(trade.tags || '[]') as string[] : [];
   const computedR = computeRMultiple();
+  const netPnl = trade ? getTradeNetPnl(trade) : null;
 
   if (!trade) {
     return <div className="p-8 text-center text-muted-foreground animate-pulse">Initializing trade...</div>;
@@ -676,6 +742,17 @@ export default function NewTrade() {
                   {MARKETS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>شماره تیکت متاتریدر</Label>
+              <Input
+                value={trade.ticketNumber ?? ''}
+                onChange={e => handleChange('ticketNumber' as any, e.target.value || null)}
+                placeholder="مثلاً 12345678"
+                dir="ltr"
+                inputMode="numeric"
+              />
             </div>
 
             <div className="space-y-2 lg:col-span-3">
@@ -810,8 +887,59 @@ export default function NewTrade() {
                     <SelectItem value="reversal">Reversal</SelectItem>
                     <SelectItem value="support-resistance">حمایت/مقاومت</SelectItem>
                     <SelectItem value="other">سایر</SelectItem>
+                    {customSetups.map(setup => (
+                      <SelectItem key={setup} value={setup}>{setup}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+                <div className="flex gap-2">
+                  <Input
+                    value={customSetupInput}
+                    onChange={e => setCustomSetupInput(e.target.value)}
+                    placeholder="ستاپ سفارشی جدید…"
+                    className="h-8 text-sm"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 shrink-0"
+                    disabled={!customSetupInput.trim()}
+                    onClick={() => {
+                      const setup = customSetupInput.trim();
+                      if (!setup) return;
+                      const next = [...customSetups.filter(item => item !== setup), setup];
+                      setCustomSetups(next);
+                      localStorage.setItem(CUSTOM_SETUPS_KEY, JSON.stringify(next));
+                      handleChange('setupType' as any, setup);
+                      setCustomSetupInput('');
+                    }}
+                  >
+                    <Plus className="h-3.5 w-3.5" /> افزودن
+                  </Button>
+                </div>
+                {customSetups.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {customSetups.map(setup => (
+                      <span key={setup} className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs">
+                        {setup}
+                        <button
+                          type="button"
+                          aria-label={`حذف ستاپ ${setup}`}
+                          onClick={() => {
+                            const next = customSetups.filter(item => item !== setup);
+                            setCustomSetups(next);
+                            localStorage.setItem(CUSTOM_SETUPS_KEY, JSON.stringify(next));
+                            if ((trade as any).setupType === setup) handleChange('setupType' as any, null);
+                          }}
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </section>
@@ -954,7 +1082,7 @@ export default function NewTrade() {
             <h2 className="text-lg font-semibold border-b pb-2">۳ب. دلیل ورود</h2>
             <div className="space-y-2">
               <Label>دلیل ورود به معامله</Label>
-              <Textarea
+              <StableTextarea
                 placeholder="چرا وارد این معامله شدید؟ چه چیزی را در چارت دیدید؟ ستاپ چه بود؟"
                 value={(trade as any).entryReason || ''}
                 onChange={e => handleChange('entryReason' as any, e.target.value || null)}
@@ -1005,7 +1133,7 @@ export default function NewTrade() {
                 <NumericInput value={trade.exitPrice} onValueChange={value => handleChange('exitPrice', value)} />
               </div>
               <div className="space-y-2">
-                <Label>P&L</Label>
+                <Label>P&L ناخالص</Label>
                 <NumericInput value={trade.profitLoss} onValueChange={value => handleChange('profitLoss', value)} />
               </div>
               <div className="space-y-2">
@@ -1016,13 +1144,27 @@ export default function NewTrade() {
                 <NumericInput value={trade.rMultiple} onValueChange={value => handleChange('rMultiple', value)} />
               </div>
               <div className="space-y-2">
-                <Label>Fees</Label>
+                <Label>هزینه‌های دیگر</Label>
                 <NumericInput value={trade.fees} onValueChange={value => handleChange('fees', value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>کمیسیون</Label>
+                <NumericInput value={trade.commission} onValueChange={value => handleChange('commission' as any, value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>اسپرد</Label>
+                <NumericInput value={trade.spread} onValueChange={value => handleChange('spread' as any, value)} />
               </div>
               <div className="space-y-2 lg:col-span-3">
                 <Label>Reason for Exit</Label>
                 <Input value={trade.reasonForExit || ''} onChange={e => handleChange('reasonForExit', e.target.value)} placeholder="Hit target, trailed stop, etc." />
               </div>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
+              <span className="text-muted-foreground">سود/زیان خالص پس از هزینه‌ها</span>
+              <strong className={netPnl !== null && netPnl >= 0 ? 'text-emerald-500' : 'text-rose-500'}>
+                {netPnl !== null ? `${netPnl >= 0 ? '+' : ''}${netPnl.toFixed(2)}` : '—'}
+              </strong>
             </div>
           </section>
         )}
@@ -1059,7 +1201,7 @@ export default function NewTrade() {
             </div>
             <div className="space-y-2">
               <Label>توضیح تصمیمات مدیریت</Label>
-              <Textarea
+              <StableTextarea
                 placeholder="چرا حد ضرر را جابجا کردید؟ دلیل خروج زودهنگام چه بود؟"
                 value={(trade as any).managementReason || ''}
                 onChange={e => handleChange('managementReason' as any, e.target.value || null)}
@@ -1118,7 +1260,7 @@ export default function NewTrade() {
                   
                   <div className="space-y-2">
                     <Label>Adherence Notes</Label>
-                    <Textarea 
+                    <StableTextarea
                       placeholder="Why did you deviate from the rules?"
                       value={trade.adherenceNotes || ''}
                       onChange={e => handleChange('adherenceNotes', e.target.value)}
@@ -1187,7 +1329,7 @@ export default function NewTrade() {
                       </div>
                       <div className="space-y-1 sm:col-span-2">
                         <Label className="text-xs">زمینه و یادداشت</Label>
-                        <Textarea value={tfData.notes || ''} onChange={e => update('notes', e.target.value)} placeholder={`تحلیل ${tf} را وارد کنید…`} className="min-h-[60px] text-sm" />
+                       <StableTextarea value={tfData.notes || ''} onChange={e => update('notes', e.target.value)} placeholder={`تحلیل ${tf} را وارد کنید…`} className="min-h-[60px] text-sm" />
                       </div>
                     </div>
                   </CardContent>
@@ -1215,21 +1357,21 @@ export default function NewTrade() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <Label>What did I do well?</Label>
-                <Textarea 
+                <StableTextarea
                   value={review.didWell || ''} 
                   onChange={e => handleChange('review', JSON.stringify({ ...review, didWell: e.target.value }))}
                 />
               </div>
               <div className="space-y-2">
                 <Label>What did I do wrong?</Label>
-                <Textarea 
+                <StableTextarea
                   value={review.didWrong || ''} 
                   onChange={e => handleChange('review', JSON.stringify({ ...review, didWrong: e.target.value }))}
                 />
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label>What did I learn?</Label>
-                <Textarea 
+                <StableTextarea
                   value={review.learned || ''} 
                   onChange={e => handleChange('review', JSON.stringify({ ...review, learned: e.target.value }))}
                 />
@@ -1305,7 +1447,7 @@ export default function NewTrade() {
             
             <div className="space-y-2">
               <Label>درس معامله</Label>
-              <Textarea
+              <StableTextarea
                 placeholder="از این معامله چه یاد گرفتید؟ چه نکته‌ای برای آینده دارد؟"
                 value={(trade as any).lesson || ''}
                 onChange={e => handleChange('lesson' as any, e.target.value || null)}
@@ -1314,7 +1456,7 @@ export default function NewTrade() {
             </div>
             <div className="space-y-2">
               <Label>General Notes</Label>
-              <Textarea 
+              <StableTextarea
                 placeholder="Any additional thoughts on this trade..."
                 value={trade.notes || ''}
                 onChange={e => handleChange('notes', e.target.value)}
