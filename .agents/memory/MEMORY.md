@@ -1,0 +1,1 @@
+- [محدودیت اتصال GitHub](github-connector-write-limits.md) — اتصال فعلی برای کد و Actions خواندنی کار می‌کند، اما نوشتن Workflow و log خام CI محدود است.
