@@ -4,6 +4,7 @@
  */
 import { Trade, DailyJournal, Strategy } from '../db/database';
 import { isWin, isLoss, isClosed, toDateStr } from '../lib/tradeHelpers';
+import { getTradeNetPnl } from '../lib/tradeClassification';
 import {
   getTradingDateParts,
   getTradingDayStart,
@@ -150,7 +151,7 @@ function calcAvgR(trades: Trade[]): number | null {
 }
 
 function calcTotalPnl(trades: Trade[]): number {
-  return trades.reduce((s, t) => s + (t.profitLoss || 0), 0);
+  return trades.reduce((s, t) => s + (getTradeNetPnl(t) ?? 0), 0);
 }
 
 function parseEmotions(json: string): string[] {

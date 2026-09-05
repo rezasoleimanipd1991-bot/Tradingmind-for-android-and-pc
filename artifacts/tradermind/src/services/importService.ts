@@ -635,7 +635,7 @@ export async function exportTradesAsCSV(): Promise<string> {
     'id', 'symbol', 'market', 'direction', 'status', 'result',
     'entryPrice', 'exitPrice', 'stopLoss', 'takeProfit',
     'positionSize', 'riskPercentage', 'riskAmount', 'rMultiple',
-    'profitLoss', 'fees', 'openedAt', 'closedAt',
+    'profitLoss', 'fees', 'commission', 'spread', 'ticketNumber', 'openedAt', 'closedAt',
     'tradingSession', 'setupType', 'entryReason', 'lesson', 'notes', 'tags',
   ];
 
@@ -653,7 +653,8 @@ export async function exportTradesAsCSV(): Promise<string> {
     t.id, t.symbol, t.market ?? '', t.direction, t.status, t.result,
     t.entryPrice, t.exitPrice ?? '', t.stopLoss, t.takeProfit ?? '',
     t.positionSize ?? '', t.riskPercentage ?? '', t.riskAmount ?? '', t.rMultiple ?? '',
-    t.profitLoss ?? '', t.fees ?? '', dateStr(t.openedAt), dateStr(t.closedAt),
+    t.profitLoss ?? '', t.fees ?? '', t.commission ?? '', t.spread ?? '', t.ticketNumber ?? '',
+    dateStr(t.openedAt), dateStr(t.closedAt),
     t.tradingSession ?? '', t.setupType ?? '', t.entryReason ?? '', t.lesson ?? '',
     t.notes ?? '', (() => { try { return JSON.parse(t.tags ?? '[]').join(';'); } catch { return ''; } })(),
   ].map(escapeCSV).join(','));

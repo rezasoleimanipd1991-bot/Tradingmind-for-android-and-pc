@@ -3,7 +3,7 @@ import { isWin, isClosed } from '../lib/tradeHelpers';
 import { strategyService } from './strategyService';
 import { analysisService } from './analysisService';
 import { tradeVersionService, tradeEventService } from './tradeEventService';
-import { detectTradingSession } from '../lib/tradeClassification';
+import { detectTradingSession, getTradeNetPnl } from '../lib/tradeClassification';
 
 const defaultReview = JSON.stringify({ didWell: '', didWrong: '', learned: '', wouldTakeAgain: null, validSetup: null });
 const defaultPostTradeReviewStr = JSON.stringify(defaultPostTradeReview);
@@ -50,7 +50,8 @@ export const tradeService = {
       sessionId: null, strategyId: null, symbol: '', market: null,
       direction: 'long', entryPrice: 0, exitPrice: null, stopLoss: 0,
       takeProfit: null, positionSize: null, riskPercentage: null, riskAmount: null,
-      rMultiple: null, result: 'open', profitLoss: null, fees: null, status: 'open',
+       rMultiple: null, result: 'open', profitLoss: null, fees: null, commission: null, spread: null,
+       ticketNumber: null, status: 'open',
       openedAt: now, closedAt: null, reasonForExit: null,
       emotions: '[]', emotionNotes: null, notes: null,
       screenshots: '[]', adherenceScore: null, adherenceRating: null,
@@ -106,8 +107,7 @@ export const tradeService = {
   async updateTrade(id: string, data: Partial<Trade>) {
     const existing = await db.trades.get(id);
     if (!existing) {
-      await db.trades.update(id, data);
-      return db.trades.get(id);
+      throw new Error(`معامله با شناسهٔ ${id} پیدا نشد و به‌روزرسانی انجام نشد.`);
     }
 
     await db.transaction('rw', [db.trades, db.tradeVersions, db.tradeEvents], async () => {
@@ -208,7 +208,7 @@ export const tradeService = {
     return {
       total: trades.length,
       winRate: closed.length > 0 ? (wins.length / closed.length) * 100 : 0,
-      totalPnl: trades.reduce((acc, t) => acc + (t.profitLoss || 0) - (t.fees || 0), 0),
+      totalPnl: trades.reduce((acc, t) => acc + (getTradeNetPnl(t) ?? 0), 0),
       avgRMultiple: withR.length > 0 ? withR.reduce((acc, t) => acc + (t.rMultiple || 0), 0) / withR.length : 0,
       closedCount: closed.length,
       openCount: trades.filter(t => t.status === 'open').length,

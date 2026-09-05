@@ -941,6 +941,17 @@ export const backupService = {
       'نسبت R/R برنامه‌ریزی‌شده': t.plannedRR ?? '',
       'حجم موقعیت': t.positionSize ?? '',
       'ریسک %': t.riskPercentage ?? '',
+      'شماره تیکت': t.ticketNumber ?? '',
+      کمیسیون: t.commission ?? '',
+      اسپرد: t.spread ?? '',
+      'هزینه کل': [t.fees, t.commission, t.spread]
+        .map((value: unknown) => value)
+        .reduce<number>((sum, value) => sum + (typeof value === 'number' ? Math.abs(value) : 0), 0),
+      'سود/زیان خالص': typeof t.profitLoss === 'number'
+        ? t.profitLoss - [t.fees, t.commission, t.spread]
+          .map((value: unknown) => value)
+          .reduce<number>((sum, value) => sum + (typeof value === 'number' ? Math.abs(value) : 0), 0)
+        : '',
       'قیمت ورود': t.entryPrice,
       'قیمت خروج': t.exitPrice ?? '',
       'حد ضرر': t.stopLoss,
