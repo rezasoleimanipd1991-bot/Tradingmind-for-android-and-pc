@@ -51,9 +51,23 @@ jobs:
           path: ${{ env.LOCALAPPDATA }}\electron\Cache
           key: ${{ runner.os }}-electron-${{ hashFiles('artifacts/tradermind/package.json') }}
 
-      - name: Build Windows installer
+      - name: Verify Electron toolchain
         working-directory: artifacts/tradermind
-        run: pnpm run electron:build:win
+        run: |
+          pnpm exec electron --version
+          pnpm exec electron-builder --version
+
+      - name: Build web assets for Electron
+        working-directory: artifacts/tradermind
+        run: pnpm run electron:build:vite
+
+      - name: Compile Electron shell
+        working-directory: artifacts/tradermind
+        run: pnpm run electron:compile
+
+      - name: Package Windows installer
+        working-directory: artifacts/tradermind
+        run: pnpm exec electron-builder --win --config electron-builder.json --publish never --debug
         env:
           # electron-builder می‌تواند از این برای publish در GitHub Releases استفاده کند
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
