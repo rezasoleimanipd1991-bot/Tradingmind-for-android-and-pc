@@ -158,6 +158,12 @@ export interface MTFAnalysis {
   '15M': MTFTimeframeAnalysis;
   '5M': MTFTimeframeAnalysis;
   '1M': MTFTimeframeAnalysis;
+  scenario?: {
+    status: 'liquidity-hunt' | 'confirmation' | 'scenario-failed' | 'no-trade' | '';
+    condition: string;
+    noTradeReason: string;
+    invalidation: string;
+  };
 }
 
 export const defaultMTFTimeframe: MTFTimeframeAnalysis = {

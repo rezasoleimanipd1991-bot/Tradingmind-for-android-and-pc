@@ -233,30 +233,46 @@ async function buildBackupData() {
 // ساخت و دانلود ZIP
 // ─────────────────────────────────────────────
 async function buildAndDownloadZip(
-  payload: BackupData,
+  payload: unknown,
   filename: string,
-  trades: any[],
+  trades: Trade[] = [],
+  chartScreenshots: unknown[] = [],
 ): Promise<number> {
   const zip = new JSZip();
   zip.file('backup.json', JSON.stringify(payload, null, 2));
 
-  // تصاویر معاملات
+  // تصاویر معامله و اسکرین‌شات‌های مستقل را علاوه بر JSON به‌صورت فایل مستقل
+  // هم قرار می‌دهیم تا کاربر بتواند آن‌ها را بیرون از برنامه بازیابی کند.
   const mediaFolder = zip.folder('media');
   let mediaIndex = 1;
+  const mediaManifest: Array<Record<string, unknown>> = [];
+  const addMedia = (dataUrl: unknown, source: string, sourceId: string, label: string) => {
+    if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) return;
+    const match = dataUrl.match(/^data:([^;,]+);base64,(.+)$/);
+    if (!match) return;
+    const mime = match[1];
+    const ext = mime.split('/')[1]?.replace('jpeg', 'jpg') || 'bin';
+    const path = `media/image-${String(mediaIndex).padStart(4, '0')}.${ext}`;
+    mediaFolder?.file(path.replace(/^media\//, ''), match[2], { base64: true });
+    mediaManifest.push({ source, sourceId, label, path, mime });
+    mediaIndex++;
+  };
+
   for (const trade of trades) {
     if (trade.screenshots) {
       try {
-        const screenshots: Array<{ id: string; dataUrl: string }> = JSON.parse(trade.screenshots);
+        const screenshots: Array<{ id: string; dataUrl: string; label?: string }> = JSON.parse(trade.screenshots);
         for (const sc of screenshots) {
-          if (sc.dataUrl?.startsWith('data:')) {
-            const ext = sc.dataUrl.split(';')[0].split('/')[1] || 'webp';
-            const base64 = sc.dataUrl.split(',')[1];
-            mediaFolder?.file(`image-${String(mediaIndex).padStart(3, '0')}.${ext}`, base64, { base64: true });
-            mediaIndex++;
-          }
+          addMedia(sc.dataUrl, 'trade', trade.id, sc.label || 'trade-screenshot');
         }
       } catch { /* تصویر نادرست نادیده گرفته می‌شود */ }
     }
+  }
+  for (const screenshot of chartScreenshots as Array<{ id?: string; dataUrl?: string; label?: string }>) {
+    addMedia(screenshot.dataUrl, 'chartScreenshot', screenshot.id || '', screenshot.label || 'chart-screenshot');
+  }
+  if (mediaManifest.length > 0) {
+    zip.file('media/index.json', JSON.stringify(mediaManifest, null, 2));
   }
 
   const zipBlob = await zip.generateAsync({
@@ -410,6 +426,112 @@ async function decompressGz(file: File): Promise<string> {
   return new TextDecoder().decode(merged);
 }
 
+function getNetPnlForExport(trade: Trade): number | string {
+  if (typeof trade.profitLoss !== 'number') return '';
+  const costs = [trade.fees, trade.commission, trade.spread]
+    .reduce((sum, value) => sum + (typeof value === 'number' ? Math.abs(value) : 0), 0);
+  return trade.profitLoss - costs;
+}
+
+function xmlEscape(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
+}
+
+function excelColumnName(index: number): string {
+  let n = index + 1;
+  let result = '';
+  while (n > 0) {
+    const remainder = (n - 1) % 26;
+    result = String.fromCharCode(65 + remainder) + result;
+    n = Math.floor((n - 1) / 26);
+  }
+  return result;
+}
+
+async function buildXlsxWorkbook(
+  sheets: Array<{ name: string; rows: Record<string, unknown>[] }>,
+): Promise<Blob> {
+  const zip = new JSZip();
+  const normalizedSheets = sheets.map((sheet, index) => ({
+    ...sheet,
+    name: sheet.name.slice(0, 31) || `Sheet${index + 1}`,
+  }));
+
+  const worksheetXml = (rows: Record<string, unknown>[]) => {
+    const headers = Array.from(new Set(rows.flatMap(row => Object.keys(row))));
+    const visibleHeaders = headers.length > 0 ? headers : ['اطلاعات'];
+    const allRows = [
+      Object.fromEntries(visibleHeaders.map(header => [header, header])),
+      ...rows,
+    ];
+    const rowXml = allRows.map((row, rowIndex) => {
+      const cells = visibleHeaders.map((header, columnIndex) => {
+        const value = row[header];
+        const ref = `${excelColumnName(columnIndex)}${rowIndex + 1}`;
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          return `<c r="${ref}" t="n"><v>${value}</v></c>`;
+        }
+        return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(value)}</t></is></c>`;
+      }).join('');
+      return `<row r="${rowIndex + 1}">${cells}</row>`;
+    }).join('');
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+      <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+        <sheetData>${rowXml}</sheetData>
+      </worksheet>`;
+  };
+
+  const contentTypes = [
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>',
+    '<Default Extension="xml" ContentType="application/xml"/>',
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>',
+    ...normalizedSheets.map((_, index) =>
+      `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`,
+    ),
+    '</Types>',
+  ].join('');
+  zip.file('[Content_Types].xml', contentTypes);
+
+  const workbookSheets = normalizedSheets.map((sheet, index) =>
+    `<sheet name="${xmlEscape(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`,
+  ).join('');
+  zip.file('xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+      xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+      <sheets>${workbookSheets}</sheets>
+    </workbook>`);
+
+  const workbookRelationships = normalizedSheets.map((_, index) =>
+    `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`,
+  ).join('');
+  zip.file('xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+      ${workbookRelationships}
+    </Relationships>`);
+  zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+      <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+    </Relationships>`);
+
+  normalizedSheets.forEach((sheet, index) => {
+    zip.file(`xl/worksheets/sheet${index + 1}.xml`, worksheetXml(sheet.rows));
+  });
+
+  return zip.generateAsync({
+    type: 'blob',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 6 },
+  });
+}
+
 // ─────────────────────────────────────────────
 // سرویس اصلی
 // ─────────────────────────────────────────────
@@ -422,9 +544,9 @@ export const backupService = {
     const now = new Date();
     const dateStr = now.toISOString().slice(0, 10);
     const timeStr = now.toTimeString().slice(0, 5).replace(':', '-');
-    const filename = `TraderMind_Backup_${dateStr}_${timeStr}.tradermind-backup.gz`;
+    const filename = `TraderMind_Backup_${dateStr}_${timeStr}.tradermind-backup.zip`;
 
-    const size = await buildAndDownloadGz(payload, filename);
+    const size = await buildAndDownloadZip(payload, filename, data.trades, data.chartScreenshots);
 
     localStorage.setItem(STORAGE_KEY_LAST, new Date().toISOString());
     this.addToHistory({
@@ -926,32 +1048,33 @@ export const backupService = {
     localStorage.removeItem(STORAGE_KEY_HISTORY);
   },
 
-  // ────────── خروجی سازگار با Excel ──────────
+  // ────────── خروجی چندشیتی Excel ──────────
   async exportToExcel(): Promise<void> {
-    const trades = await db.trades.toArray();
+    const { data, metadata } = await buildBackupData();
+    const rowsFor = (records: unknown[] | undefined): Record<string, unknown>[] =>
+      (records ?? []).map(record => {
+        if (!record || typeof record !== 'object') return { value: record };
+        return Object.fromEntries(Object.entries(record as Record<string, unknown>).map(([key, value]) => [
+          key,
+          typeof value === 'object' && value !== null ? JSON.stringify(value) : value,
+        ]));
+      });
 
-    const rows = trades.map(t => ({
+    const trades = data.trades.map(t => ({
       تاریخ: t.openedAt ? new Date(t.openedAt).toLocaleDateString('fa-IR') : '',
       نماد: t.symbol,
       جهت: t.direction === 'long' ? 'خرید (Long)' : 'فروش (Short)',
       وضعیت: t.status,
       نتیجه: t.result,
       'سود/زیان (R)': t.rMultiple ?? '',
-      'سود/زیان ($)': t.profitLoss ?? '',
+      'سود/زیان ناخالص': t.profitLoss ?? '',
+      'سود/زیان خالص': getNetPnlForExport(t),
       'نسبت R/R برنامه‌ریزی‌شده': t.plannedRR ?? '',
       'حجم موقعیت': t.positionSize ?? '',
       'ریسک %': t.riskPercentage ?? '',
       'شماره تیکت': t.ticketNumber ?? '',
       کمیسیون: t.commission ?? '',
       اسپرد: t.spread ?? '',
-      'هزینه کل': [t.fees, t.commission, t.spread]
-        .map((value: unknown) => value)
-        .reduce<number>((sum, value) => sum + (typeof value === 'number' ? Math.abs(value) : 0), 0),
-      'سود/زیان خالص': typeof t.profitLoss === 'number'
-        ? t.profitLoss - [t.fees, t.commission, t.spread]
-          .map((value: unknown) => value)
-          .reduce<number>((sum, value) => sum + (typeof value === 'number' ? Math.abs(value) : 0), 0)
-        : '',
       'قیمت ورود': t.entryPrice,
       'قیمت خروج': t.exitPrice ?? '',
       'حد ضرر': t.stopLoss,
@@ -964,20 +1087,68 @@ export const backupService = {
       'درس‌آموخته': t.lesson ?? '',
     }));
 
-    const headers = rows.length
-      ? Object.keys(rows[0])
-      : ['تاریخ', 'نماد', 'جهت', 'وضعیت', 'نتیجه'];
-    const escapeCsv = (value: unknown): string => {
-      const text = value == null ? '' : String(value);
-      return `"${text.replaceAll('"', '""')}"`;
-    };
-    const csv = [
-      headers.map(escapeCsv).join(','),
-      ...rows.map(row => headers.map(header => escapeCsv(row[header as keyof typeof row])).join(',')),
-    ].join('\r\n');
-    // BOM ensures Persian text opens correctly in Excel on Windows.
-    const csvBlob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' });
-    const filename = `tradermind_trades_${new Date().toISOString().slice(0, 10)}.csv`;
-    await deliverFile(csvBlob, filename);
+    const screenshotRows: Record<string, unknown>[] = [];
+    for (const trade of data.trades) {
+      try {
+        const screenshots = JSON.parse(trade.screenshots || '[]') as Array<{ id?: string; label?: string; timeframe?: string; dataUrl?: string }>;
+        screenshots.forEach((s, index) => screenshotRows.push({
+          منبع: 'معامله',
+          'شناسه معامله': trade.id,
+          'شناسه تصویر': s.id || `${trade.id}-${index + 1}`,
+          برچسب: s.label || '',
+          تایم‌فریم: s.timeframe || '',
+          'مسیر رسانه در ZIP': `media/trade-${trade.id}-${index + 1}`,
+          'داده تصویر برای بازیابی': s.dataUrl || '',
+        }));
+      } catch { /* screenshot JSON may be from an older version */ }
+    }
+    for (const s of data.chartScreenshots as Array<{ id?: string; symbol?: string | null; timeframe?: string | null; label?: string | null; dataUrl?: string }>) {
+      screenshotRows.push({
+        منبع: 'اسکرین‌شات مستقل',
+        'شناسه معامله': '',
+        'شناسه تصویر': s.id || '',
+        نماد: s.symbol || '',
+        برچسب: s.label || '',
+        تایم‌فریم: s.timeframe || '',
+        'مسیر رسانه در ZIP': `media/chartScreenshot-${s.id || 'unknown'}`,
+        'داده تصویر برای بازیابی': s.dataUrl || '',
+      });
+    }
+
+    const sheets: Array<{ name: string; rows: Record<string, unknown>[] }> = [
+      { name: 'راهنما', rows: [{
+        برنامه: 'TraderMind',
+        'زمان ساخت': metadata.createdAt,
+        'نسخه برنامه': metadata.appVersion,
+        'نسخه دیتابیس': metadata.databaseVersion,
+        'تعداد کل رکوردها': metadata.totalRecords,
+        توضیح: 'تصاویر در شیت تصاویر و نسخه کامل آن‌ها در فایل ZIP پشتیبان قابل بازیابی هستند.',
+      }] },
+      { name: 'معاملات', rows: trades },
+      { name: 'جلسات تحلیل', rows: rowsFor(data.analysisSessions) },
+      { name: 'ژورنال روزانه', rows: rowsFor(data.dailyJournals) },
+      { name: 'استراتژی‌ها', rows: rowsFor(data.strategies) },
+      { name: 'فازها', rows: rowsFor(data.phases) },
+      { name: 'مراحل', rows: rowsFor(data.steps) },
+      { name: 'قوانین', rows: rowsFor(data.rules) },
+      { name: 'حساب‌ها', rows: rowsFor(data.accounts) },
+      { name: 'باکس‌های معاملاتی', rows: rowsFor(data.tradingBoxes) },
+      { name: 'رویدادهای معامله', rows: rowsFor(data.tradeEvents) },
+      { name: 'نسخه‌های معامله', rows: rowsFor(data.tradeVersions) },
+      { name: 'تحلیل ریسک', rows: rowsFor(data.riskProfiles) },
+      { name: 'تخلف‌های ریسک', rows: rowsFor(data.riskViolations) },
+      { name: 'گروه‌های ریسک', rows: rowsFor(data.riskGroups) },
+      { name: 'اسکرین‌شات‌ها', rows: screenshotRows },
+      { name: 'الگوهای بصری', rows: rowsFor(data.visualPatterns) },
+      { name: 'کالکشن تصاویر', rows: rowsFor(data.screenshotCollections) },
+      { name: 'یادداشت‌های دانش', rows: rowsFor(data.knowledgeNotes) },
+      { name: 'چک‌لیست‌ها', rows: rowsFor(data.preTradeChecklists) },
+      { name: 'فوکوس روزانه', rows: rowsFor(data.dailyFocus) },
+      { name: 'تنظیمات', rows: Object.entries(data.settings).map(([key, value]) => ({ کلید: key, مقدار: value })) },
+    ];
+
+    const workbook = await buildXlsxWorkbook(sheets);
+    const filename = `TraderMind_Excel_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    await deliverFile(workbook, filename);
   },
 };
