@@ -930,6 +930,7 @@ export interface Account {
 export interface TradingBox {
   id: string;
   name: string;               // مثلاً «باکس ۱» یا «آزمون استراتژی بهار»
+  accountId: string | null;   // هر باکس به یک حساب تعلق دارد
   description: string | null;
   targetTradeCount: number | null;  // هدف تعداد معاملات
   color: string;
@@ -1440,6 +1441,15 @@ class TraderMindDB extends Dexie {
       screenshotCollections: 'id, name, isDefault, createdAt',
       accounts: 'id, name, isDefault, createdAt',
       tradingBoxes: 'id, name, status, createdAt',
+    });
+
+    // نسخه ۲۲: اتصال هر باکس معاملاتی به یک حساب
+    this.version(22).stores({
+      tradingBoxes: 'id, name, accountId, status, createdAt',
+    }).upgrade(tx => {
+      return tx.table('tradingBoxes').toCollection().modify((box: TradingBox) => {
+        if (box.accountId === undefined) box.accountId = null;
+      });
     });
   }
 }

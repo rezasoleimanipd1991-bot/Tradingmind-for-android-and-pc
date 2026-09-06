@@ -14,7 +14,7 @@ import { Progress } from "../components/ui/progress";
 import { Badge } from "../components/ui/badge";
 import {
   ArrowRight, Check, CheckCircle, XCircle, Pause, ChevronLeft,
-  TrendingUp, TrendingDown, Clock, X, Camera, Search,
+  TrendingUp, TrendingDown, Clock, X, Camera, Search, AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { openImagePicker, fileToCompressedDataUrl } from "../lib/imageCompression";
@@ -39,6 +39,8 @@ export default function SessionRunner() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imageStepId, setImageStepId] = useState<string | null>(null);
   const [allTrades, setAllTrades] = useState<Trade[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   // ردیابی تعامل واقعی کاربر — auto-advance فقط بعد از پاسخ‌دهی فعال
   const hasInteractedRef = useRef(false);
 
@@ -46,29 +48,41 @@ export default function SessionRunner() {
   useEffect(() => { db.trades.toArray().then(setAllTrades); }, []);
 
   const loadData = async () => {
-    const sess = await analysisService.getSessionById(id!);
-    if (!sess) return;
-    setSession(sess);
-    setResults(JSON.parse(sess.stepResults || '{}'));
+    if (!id) return;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const sess = await analysisService.getSessionById(id);
+      if (!sess) throw new Error('جلسه تحلیل پیدا نشد. ممکن است لینک قدیمی باشد.');
+      setSession(sess);
+      setResults(JSON.parse(sess.stepResults || '{}'));
 
-    const strat = await strategyService.getStrategyById(sess.strategyId);
-    if (!strat) return;
-    setStrategy(strat);
-    const phs = await strategyService.getPhasesByStrategyId(strat.id);
-    setPhases(phs);
+      const strat = await strategyService.getStrategyById(sess.strategyId);
+      if (!strat) throw new Error('استراتژی این جلسه پیدا نشد.');
+      setStrategy(strat);
+      const phs = await strategyService.getPhasesByStrategyId(strat.id);
+      if (phs.length === 0) {
+        throw new Error('این استراتژی هنوز مرحله‌ای برای تحلیل ندارد. از بخش استراتژی‌ها حداقل یک مرحله و گام بسازید.');
+      }
+      setPhases(phs);
 
-    const stps: Record<string, Step[]> = {};
-    for (const p of phs) {
-      stps[p.id] = await strategyService.getStepsByPhaseId(p.id);
+      const stps: Record<string, Step[]> = {};
+      for (const p of phs) {
+        stps[p.id] = await strategyService.getStepsByPhaseId(p.id);
+      }
+      setSteps(stps);
+
+      if (sess.currentPhaseId) {
+        const idx = phs.findIndex(p => p.id === sess.currentPhaseId);
+        if (idx !== -1) setCurrentPhaseIndex(idx);
+      }
+
+      if (sess.status !== 'in-progress') setViewMode('finished');
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'بارگذاری جلسه تحلیل انجام نشد.');
+    } finally {
+      setLoading(false);
     }
-    setSteps(stps);
-
-    if (sess.currentPhaseId) {
-      const idx = phs.findIndex(p => p.id === sess.currentPhaseId);
-      if (idx !== -1) setCurrentPhaseIndex(idx);
-    }
-
-    if (sess.status !== 'in-progress') setViewMode('finished');
   };
 
   const saveResults = async (newResults: typeof results) => {
@@ -276,10 +290,30 @@ export default function SessionRunner() {
     };
   }
 
-  if (!session || !strategy || phases.length === 0) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-64 text-muted-foreground animate-pulse">
         در حال بارگذاری...
+      </div>
+    );
+  }
+
+  if (loadError || !session || !strategy || phases.length === 0) {
+    return (
+      <div className="max-w-xl mx-auto py-12" dir="rtl">
+        <Card className="border-amber-500/30">
+          <CardContent className="p-8 text-center space-y-4">
+            <AlertCircle className="w-12 h-12 mx-auto text-amber-500" />
+            <h2 className="text-xl font-bold">جلسهٔ تحلیل بارگذاری نشد</h2>
+            <p className="text-sm text-muted-foreground leading-7">
+              {loadError || 'اطلاعات جلسه کامل نیست.'}
+            </p>
+            <div className="flex flex-col sm:flex-row justify-center gap-2">
+              <Button onClick={() => void loadData()}>تلاش مجدد</Button>
+              <Button variant="outline" onClick={() => setLocation('/analysis')}>بازگشت به تحلیل‌ها</Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }

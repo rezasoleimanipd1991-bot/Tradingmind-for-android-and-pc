@@ -251,8 +251,9 @@ async function buildAndDownloadZip(
     const match = dataUrl.match(/^data:([^;,]+);base64,(.+)$/);
     if (!match) return;
     const mime = match[1];
-    const ext = mime.split('/')[1]?.replace('jpeg', 'jpg') || 'bin';
-    const path = `media/image-${String(mediaIndex).padStart(4, '0')}.${ext}`;
+    const ext = mediaExtensionFromMime(mime);
+    const folder = source === 'trade' ? 'trades' : 'chart-screenshots';
+    const path = `media/${folder}/${safeFilePart(sourceId)}-${String(mediaIndex).padStart(3, '0')}-${safeFilePart(label)}.${ext}`;
     mediaFolder?.file(path.replace(/^media\//, ''), match[2], { base64: true });
     mediaManifest.push({ source, sourceId, label, path, mime });
     mediaIndex++;
@@ -443,6 +444,20 @@ function xmlEscape(value: unknown): string {
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
 }
 
+function safeFilePart(value: unknown): string {
+  return String(value ?? 'unknown')
+    .normalize('NFKC')
+    .replace(/[^\p{L}\p{N}\-_]+/gu, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 70) || 'unknown';
+}
+
+function mediaExtensionFromMime(mime: string): string {
+  const subtype = mime.toLowerCase().split('/')[1] || 'bin';
+  return subtype === 'jpeg' ? 'jpg' : subtype;
+}
+
 function excelColumnName(index: number): string {
   let n = index + 1;
   let result = '';
@@ -530,6 +545,193 @@ async function buildXlsxWorkbook(
     compression: 'DEFLATE',
     compressionOptions: { level: 6 },
   });
+}
+
+interface WordImageAsset {
+  tradeId: string;
+  symbol: string;
+  index: number;
+  label: string;
+  timeframe: string;
+  dataUrl: string;
+}
+
+function wordText(value: unknown): string {
+  return `<w:r><w:t xml:space="preserve">${xmlEscape(value)}</w:t></w:r>`;
+}
+
+function wordParagraph(value: unknown, runProperties = ''): string {
+  return `<w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r>${runProperties ? `<w:rPr>${runProperties}</w:rPr>` : ''}<w:t xml:space="preserve">${xmlEscape(value)}</w:t></w:r></w:p>`;
+}
+
+function wordTable(headers: string[], rows: string[][]): string {
+  const cell = (value: unknown, isHeader = false) =>
+    `<w:tc><w:tcPr><w:shd w:fill="${isHeader ? '1D4ED8' : 'F8FAFC'}"/><w:tcW w:w="1200" w:type="dxa"/></w:tcPr>` +
+    `<w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r>${isHeader ? '<w:rPr><w:b/></w:rPr>' : ''}<w:t xml:space="preserve">${xmlEscape(value)}</w:t></w:r></w:p></w:tc>`;
+  const row = (values: string[], isHeader = false) =>
+    `<w:tr>${values.map(value => cell(value, isHeader)).join('')}</w:tr>`;
+  return `<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="0" w:type="auto"/><w:jc w:val="center"/></w:tblPr>` +
+    row(headers, true) + rows.map(values => row(values)).join('') + '</w:tbl>';
+}
+
+function wordImageXml(asset: WordImageAsset, relationshipId: string, docId: number): string {
+  const name = `${asset.symbol}-${asset.tradeId}-${asset.index}`;
+  return `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:drawing>
+    <wp:inline distT="0" distB="0" distL="0" distR="0">
+      <wp:extent cx="7200000" cy="4200000"/>
+      <wp:docPr id="${docId}" name="${xmlEscape(name)}"/>
+      <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+        <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+          <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+            <pic:nvPicPr><pic:cNvPr id="${docId}" name="${xmlEscape(name)}"/><pic:cNvPicPr/></pic:nvPicPr>
+            <pic:blipFill><a:blip r:embed="${relationshipId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>
+            <pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="7200000" cy="4200000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>
+          </pic:pic>
+        </a:graphicData>
+      </a:graphic>
+    </wp:inline>
+  </w:drawing></w:r></w:p>`;
+}
+
+async function normalizeWordImage(dataUrl: string): Promise<{ mime: string; base64: string }> {
+  const match = dataUrl.match(/^data:([^;,]+);base64,(.+)$/);
+  if (!match) throw new Error('فرمت تصویر پشتیبانی نمی‌شود');
+  const mime = match[1].toLowerCase();
+  if (mime !== 'image/webp') return { mime, base64: match[2] };
+
+  // Word روی همهٔ نسخه‌ها WebP را باز نمی‌کند؛ در مرورگر آن را به PNG تبدیل می‌کنیم.
+  try {
+    const converted = await new Promise<string>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = image.naturalWidth || 1280;
+        canvas.height = image.naturalHeight || 720;
+        const context = canvas.getContext('2d');
+        if (!context) return reject(new Error('canvas unavailable'));
+        context.drawImage(image, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      image.onerror = () => reject(new Error('image conversion failed'));
+      image.src = dataUrl;
+    });
+    const convertedMatch = converted.match(/^data:(image\/png);base64,(.+)$/);
+    if (convertedMatch) return { mime: convertedMatch[1], base64: convertedMatch[2] };
+  } catch {
+    // در صورت عدم امکان تبدیل، تصویر اصلی را نگه می‌داریم تا در ZIP قابل بازیابی باشد.
+  }
+  return { mime, base64: match[2] };
+}
+
+async function buildWordDocument(trades: Trade[]): Promise<Blob> {
+  const assets: WordImageAsset[] = [];
+  for (const trade of trades) {
+    try {
+      const screenshots = JSON.parse(trade.screenshots || '[]') as Array<{ dataUrl?: string; label?: string; timeframe?: string }>;
+      screenshots.forEach((s, index) => {
+        if (s.dataUrl?.startsWith('data:')) {
+          assets.push({
+            tradeId: trade.id,
+            symbol: trade.symbol,
+            index: index + 1,
+            label: s.label || 'اسکرین‌شات معامله',
+            timeframe: s.timeframe || '',
+            dataUrl: s.dataUrl,
+          });
+        }
+      });
+    } catch { /* داده تصویر قدیمی یا ناقص است */ }
+  }
+
+  const imageParts = await Promise.all(assets.map(async asset => ({
+    asset,
+    binary: await normalizeWordImage(asset.dataUrl),
+  })));
+  const zip = new JSZip();
+  const imageRelationships: string[] = [];
+  const imageXml: string[] = [];
+  imageParts.forEach(({ asset, binary }, index) => {
+    const ext = binary.mime.split('/')[1] === 'jpeg' ? 'jpg' : binary.mime.split('/')[1] || 'bin';
+    const fileName = `trade-${safeFilePart(asset.tradeId)}-${String(asset.index).padStart(2, '0')}-${safeFilePart(asset.symbol)}.${ext}`;
+    const target = `media/${fileName}`;
+    zip.file(`word/${target}`, binary.base64, { base64: true });
+    const relationshipId = `rId${index + 1}`;
+    imageRelationships.push(`<Relationship Id="${relationshipId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${target}"/>`);
+    imageXml.push(wordImageXml(asset, relationshipId, index + 1));
+  });
+
+  const rows = trades.map((trade, index) => {
+    let screenshotsCount = 0;
+    try {
+      screenshotsCount = JSON.parse(trade.screenshots || '[]').filter((s: any) => s?.dataUrl?.startsWith('data:')).length;
+    } catch { /* ignored */ }
+    return [
+      String(index + 1),
+      trade.openedAt ? new Date(trade.openedAt).toLocaleDateString('fa-IR') : '',
+      `${trade.symbol} / ${trade.direction === 'long' ? 'Long' : 'Short'}`,
+      `${trade.status} / ${trade.result}`,
+      `${trade.entryPrice} → ${trade.exitPrice ?? '—'}`,
+      `${trade.stopLoss} / ${trade.takeProfit ?? '—'}`,
+      `${trade.positionSize ?? '—'} / ${trade.riskPercentage ?? '—'}%`,
+      String(getNetPnlForExport(trade)),
+      `${trade.accountId ?? '—'} / ${trade.boxId ?? '—'}`,
+      `${trade.strategyId ?? '—'} / ${trade.setupType ?? '—'}`,
+      `${trade.entryReason ?? ''} (${screenshotsCount} تصویر)`,
+      `${trade.notes ?? ''} ${trade.lesson ?? ''}`,
+    ];
+  });
+
+  const headers = ['ردیف', 'تاریخ', 'نماد / جهت', 'وضعیت / نتیجه', 'ورود / خروج', 'حد ضرر / هدف', 'حجم / ریسک', 'سود خالص', 'حساب / باکس', 'استراتژی / ستاپ', 'دلیل ورود', 'یادداشت / درس‌آموخته'];
+  const body = [
+    wordParagraph('TraderMind — گزارش کامل معاملات', '<w:b/><w:sz w:val="32"/>'),
+    wordParagraph(`زمان تهیه: ${new Date().toLocaleString('fa-IR')} — تعداد معاملات: ${trades.length}`),
+    wordTable(headers, rows),
+    '<w:p><w:r><w:br w:type="page"/></w:r></w:p>',
+    wordParagraph('تصاویر معاملات', '<w:b/><w:sz w:val="28"/>'),
+  ];
+
+  if (assets.length === 0) {
+    body.push(wordParagraph('برای معاملات ثبت‌شده تصویر ذخیره‌شده‌ای وجود ندارد.'));
+  } else {
+    let lastTradeId = '';
+    assets.forEach((asset, index) => {
+      if (asset.tradeId !== lastTradeId) {
+        if (lastTradeId) body.push('<w:p><w:r><w:br w:type="page"/></w:r></w:p>');
+        body.push(wordParagraph(`معامله: ${asset.symbol} — شناسه: ${asset.tradeId}`));
+        lastTradeId = asset.tradeId;
+      }
+      body.push(wordParagraph(`تصویر ${asset.index} — ${asset.label}${asset.timeframe ? ` — تایم‌فریم ${asset.timeframe}` : ''}`));
+      body.push(imageXml[index]);
+    });
+  }
+  body.push('<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="500" w:right="500" w:bottom="500" w:left="500"/></w:sectPr>');
+
+  zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+      <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+      <Default Extension="xml" ContentType="application/xml"/>
+      <Default Extension="png" ContentType="image/png"/>
+      <Default Extension="jpg" ContentType="image/jpeg"/>
+      <Default Extension="jpeg" ContentType="image/jpeg"/>
+      <Default Extension="webp" ContentType="image/webp"/>
+      <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+    </Types>`);
+  zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+      <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+    </Relationships>`);
+  zip.file('word/_rels/document.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+      ${imageRelationships.join('')}
+    </Relationships>`);
+  zip.file('word/document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+      xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+      xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">
+      <w:body>${body.join('')}</w:body>
+    </w:document>`);
+
+  return zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
 }
 
 // ─────────────────────────────────────────────
@@ -1088,6 +1290,7 @@ export const backupService = {
     }));
 
     const screenshotRows: Record<string, unknown>[] = [];
+    let mediaIndexForExport = 1;
     for (const trade of data.trades) {
       try {
         const screenshots = JSON.parse(trade.screenshots || '[]') as Array<{ id?: string; label?: string; timeframe?: string; dataUrl?: string }>;
@@ -1097,7 +1300,7 @@ export const backupService = {
           'شناسه تصویر': s.id || `${trade.id}-${index + 1}`,
           برچسب: s.label || '',
           تایم‌فریم: s.timeframe || '',
-          'مسیر رسانه در ZIP': `media/trade-${trade.id}-${index + 1}`,
+          'مسیر رسانه در ZIP': `media/trades/${safeFilePart(trade.id)}-${String(mediaIndexForExport++).padStart(3, '0')}-${safeFilePart(s.label || 'trade-screenshot')}.${mediaExtensionFromMime((s.dataUrl || '').match(/^data:([^;,]+)/)?.[1] || 'application/octet-stream')}`,
           'داده تصویر برای بازیابی': s.dataUrl || '',
         }));
       } catch { /* screenshot JSON may be from an older version */ }
@@ -1110,7 +1313,7 @@ export const backupService = {
         نماد: s.symbol || '',
         برچسب: s.label || '',
         تایم‌فریم: s.timeframe || '',
-        'مسیر رسانه در ZIP': `media/chartScreenshot-${s.id || 'unknown'}`,
+        'مسیر رسانه در ZIP': `media/chart-screenshots/${safeFilePart(s.id || 'unknown')}-${String(mediaIndexForExport++).padStart(3, '0')}-${safeFilePart(s.label || 'chart-screenshot')}.${mediaExtensionFromMime((s.dataUrl || '').match(/^data:([^;,]+)/)?.[1] || 'application/octet-stream')}`,
         'داده تصویر برای بازیابی': s.dataUrl || '',
       });
     }
@@ -1150,5 +1353,13 @@ export const backupService = {
     const workbook = await buildXlsxWorkbook(sheets);
     const filename = `TraderMind_Excel_${new Date().toISOString().slice(0, 10)}.xlsx`;
     await deliverFile(workbook, filename);
+  },
+
+  // ────────── گزارش Word با جدول معاملات و تصاویر ──────────
+  async exportToWord(): Promise<void> {
+    const { data } = await buildBackupData();
+    const document = await buildWordDocument(data.trades);
+    const filename = `TraderMind_گزارش_معاملات_${new Date().toISOString().slice(0, 10)}.docx`;
+    await deliverFile(document, filename);
   },
 };

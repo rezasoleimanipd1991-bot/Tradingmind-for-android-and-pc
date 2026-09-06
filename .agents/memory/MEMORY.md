@@ -1,1 +1,2 @@
 - [محدودیت اتصال GitHub](github-connector-write-limits.md) — اتصال فعلی برای کد و Actions خواندنی کار می‌کند، اما نوشتن Workflow و log خام CI محدود است.
+- [بارگذاری تحلیل آفلاین](offline-analysis-loading.md) — نبودن رکوردهای فرزند در IndexedDB باید خطای قابل‌اقدام بدهد، نه loading بی‌پایان.
