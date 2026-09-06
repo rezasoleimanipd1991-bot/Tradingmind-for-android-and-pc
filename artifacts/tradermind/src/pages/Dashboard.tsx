@@ -440,17 +440,20 @@ export default function Dashboard() {
   // ══════════════════════════════════════════════
   if (isNewUser) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh] text-center gap-6 px-4" dir="rtl">
-        <div className="w-20 h-20 rounded-3xl bg-primary/10 flex items-center justify-center">
-          <Target className="w-10 h-10 text-primary" />
+      <div className="hero-empty-state relative overflow-hidden flex flex-col items-center justify-center min-h-[70vh] text-center gap-6 px-4 rounded-[2rem] border border-primary/10" dir="rtl">
+        <div className="absolute -top-24 -left-20 h-72 w-72 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-32 -right-20 h-80 w-80 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none" />
+        <div className="relative w-20 h-20 rounded-[1.6rem] bg-gradient-to-br from-primary to-indigo-400 flex items-center justify-center shadow-xl shadow-primary/25">
+          <Target className="w-10 h-10 text-primary-foreground" />
         </div>
-        <div>
-          <h1 className="text-2xl font-bold mb-2">به TraderMind خوش آمدی</h1>
-          <p className="text-muted-foreground max-w-sm">
+        <div className="relative">
+          <p className="text-xs font-semibold tracking-[0.22em] text-primary mb-3">TRADERMIND OS</p>
+          <h1 className="text-2xl sm:text-3xl font-bold mb-2">به TraderMind خوش آمدی</h1>
+          <p className="text-muted-foreground max-w-md leading-7">
             اولین استراتژی‌ات را ایجاد کن تا مسیر تحلیل و ژورنال‌نویسی حرفه‌ای را شروع کنیم.
           </p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex flex-col sm:flex-row gap-3">
           <Link href="/strategies/new">
             <Button size="lg" className="gap-2">
               <Plus className="w-5 h-5" /> ایجاد اولین استراتژی
@@ -462,13 +465,13 @@ export default function Dashboard() {
             </Button>
           </Link>
         </div>
-        <div className="grid grid-cols-3 gap-4 mt-4 text-sm text-muted-foreground max-w-sm w-full">
+        <div className="relative grid grid-cols-3 gap-3 mt-4 text-sm text-muted-foreground max-w-md w-full">
           {[
             { icon: Target, text: "استراتژی بساز" },
             { icon: ActivitySquare, text: "تحلیل کن" },
             { icon: BarChart3, text: "رشد کن" },
           ].map(({ icon: Icon, text }) => (
-            <div key={text} className="flex flex-col items-center gap-2 p-3 rounded-xl border border-dashed">
+            <div key={text} className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-primary/15 bg-background/40 backdrop-blur-sm">
               <Icon className="w-5 h-5 opacity-50" />
               <span>{text}</span>
             </div>

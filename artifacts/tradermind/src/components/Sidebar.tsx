@@ -58,7 +58,7 @@ function NavItem({
     <Link
       href={href}
       className={cn(
-        "flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors text-sm font-medium min-h-[44px]",
+        "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-sm font-medium min-h-[44px]",
         isActive
           ? "bg-primary/10 text-primary"
           : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
@@ -384,7 +384,7 @@ export function Sidebar() {
             left-0
             right-0
             bottom-0
-            top-14
+             top-16
             bg-background/80
             backdrop-blur-sm
             z-40
@@ -400,7 +400,7 @@ export function Sidebar() {
       {/* ── Sidebar دسکتاپ + Drawer موبایل */}
       <aside
         className={cn(
-          "tradermind-mobile-drawer fixed z-50 bg-sidebar border-l flex flex-col"
+            "tradermind-mobile-drawer fixed z-50 bg-sidebar/95 border-l flex flex-col"
         )}
         style={{
           // Keep the drawer inside the visual viewport on Android WebView.
@@ -411,8 +411,8 @@ export function Sidebar() {
           // identical so the module menu never covers the content column.
           width: "min(16rem, 100vw)",
           maxWidth: "100vw",
-          top: "56px",
-          height: "calc(100dvh - 56px)",
+           top: "64px",
+           height: "calc(100dvh - 64px)",
         }}
         data-open={sidebarOpen ? "true" : "false"}
         dir="rtl"
@@ -430,7 +430,7 @@ export function Sidebar() {
             shrink-0
           "
           style={{
-            minHeight: "56px",
+            minHeight: "64px",
           }}
         >
 
@@ -445,7 +445,7 @@ export function Sidebar() {
             <div className="
               w-6
               h-6
-              rounded
+             rounded-xl
               bg-primary
               flex
               items-center
@@ -488,7 +488,7 @@ export function Sidebar() {
         <div className="
           flex-1
           overflow-y-auto
-          py-4
+           py-5
         ">
 
           {navGroups.map((group, i) => (
@@ -496,14 +496,14 @@ export function Sidebar() {
             <div
               key={i}
               className="
-                mb-6
+                 mb-7
                 px-3
               "
             >
 
               <h4
                 className="
-                  mb-1.5
+                   mb-2
                   px-3
                   text-xs
                   font-semibold
@@ -589,7 +589,7 @@ export function Sidebar() {
           gap-3
         "
         style={{
-          height: "56px",
+           height: "64px",
           paddingTop:
             "env(safe-area-inset-top)",
         }}
@@ -644,8 +644,8 @@ export function Sidebar() {
           items-stretch
         "
         style={{
-          height:
-            "calc(56px + env(safe-area-inset-bottom, 0px))",
+           height:
+             "calc(64px + env(safe-area-inset-bottom, 0px))",
 
           paddingBottom:
             "env(safe-area-inset-bottom, 0px)",

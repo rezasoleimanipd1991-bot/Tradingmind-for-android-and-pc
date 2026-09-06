@@ -429,7 +429,7 @@ async function decompressGz(file: File): Promise<string> {
 function getNetPnlForExport(trade: Trade): number | string {
   if (typeof trade.profitLoss !== 'number') return '';
   const costs = [trade.fees, trade.commission, trade.spread]
-    .reduce((sum, value) => sum + (typeof value === 'number' ? Math.abs(value) : 0), 0);
+    .reduce<number>((sum, value) => sum + (typeof value === 'number' ? Math.abs(value) : 0), 0);
   return trade.profitLoss - costs;
 }
 
