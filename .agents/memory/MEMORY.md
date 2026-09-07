@@ -1,2 +1,3 @@
 - [محدودیت اتصال GitHub](github-connector-write-limits.md) — اتصال فعلی برای کد و Actions خواندنی کار می‌کند، اما نوشتن Workflow و log خام CI محدود است.
 - [بارگذاری تحلیل آفلاین](offline-analysis-loading.md) — نبودن رکوردهای فرزند در IndexedDB باید خطای قابل‌اقدام بدهد، نه loading بی‌پایان.
+- [ساخت خروجی Windows](windows-artifact-build.md) — ساخت وب و کامپایل Electron روی Linux ممکن است، اما NSIS نهایی به ابزار Windows مثل wine نیاز دارد؛ اعتبارسنجی نهایی باید در CI ویندوزی انجام شود.

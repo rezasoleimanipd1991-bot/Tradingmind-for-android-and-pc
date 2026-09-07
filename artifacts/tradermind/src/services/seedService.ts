@@ -25,11 +25,7 @@ export interface SeedOptions {
 
 // ── داده‌های آزمایشی ──────────────────────────────────────────────────────────
 
-const SYMBOLS = [
-  'EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'AUDUSD', 'USDCAD', 'NZDUSD',
-  'XAUUSD', 'XAGUSD', 'BTCUSD', 'ETHUSD', 'GBPJPY', 'EURJPY', 'EURGBP',
-  'US30', 'US100', 'US500', 'BRENTOIL', 'NATGAS',
-];
+const SYMBOLS = ['XAUUSD', 'EURUSD'];
 
 const SESSIONS = ['london', 'newyork', 'asian', 'overlap'] as const;
 const DIRECTIONS = ['long', 'short'] as const;

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type ComponentProps } from "react";
+import { Capacitor } from "@capacitor/core";
 import { Link, useLocation } from "wouter";
 import { tradeService } from "../services/tradeService";
 import { analysisService } from "../services/analysisService";
@@ -210,8 +211,9 @@ function NumericInput({
 function StableTextarea({
   value,
   onChange,
+  voice = false,
   ...props
-}: ComponentProps<typeof Textarea>) {
+}: ComponentProps<typeof Textarea> & { voice?: boolean }) {
   const externalValue = typeof value === 'string' ? value : '';
   const [text, setText] = useState(externalValue);
 
@@ -221,21 +223,42 @@ function StableTextarea({
     if (externalValue !== text) setText(externalValue);
   }, [externalValue, text]);
 
+  const appendVoiceText = (spoken: string) => {
+    const next = `${text}${text.trim() ? ' ' : ''}${spoken}`.trim();
+    setText(next);
+    onChange?.({ target: { value: next } } as any);
+  };
+
   return (
-    <Textarea
-      {...props}
-      value={text}
-      onChange={event => {
-        setText(event.target.value);
-        onChange?.(event);
-      }}
-    />
+    <div className="relative">
+      <Textarea
+        {...props}
+        value={text}
+        className={`${props.className ?? ''}${voice ? ' pb-10' : ''}`}
+        onChange={event => {
+          setText(event.target.value);
+          onChange?.(event);
+        }}
+      />
+      {voice && (
+        <div className="absolute bottom-1 left-1">
+          <VoiceInputButton onText={appendVoiceText} />
+        </div>
+      )}
+    </div>
   );
 }
 
 function VoiceInputButton({ onText }: { onText: (text: string) => void }) {
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<any>(null);
+  const isWebRuntime =
+    typeof window !== 'undefined' &&
+    window.location.protocol !== 'file:' &&
+    !window.electronAPI?.isElectron &&
+    !Capacitor.isNativePlatform();
+
+  if (!isWebRuntime) return null;
 
   const toggle = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -1085,30 +1108,6 @@ export default function NewTrade() {
           </div>
         </section>
 
-        {/* ── برنامه معامله (Planned Trade) — همیشه قابل ویرایش است ── */}
-        <section className="space-y-6">
-          <h2 className="text-lg font-semibold border-b pb-2">۲ب. برنامه معامله (Planned)</h2>
-          <div className="grid grid-cols-1 min-[380px]:grid-cols-2 md:grid-cols-3 gap-4">
-            {[
-              { key: 'plannedEntry', label: 'ورود برنامه‌ریزی‌شده' },
-              { key: 'plannedSL', label: 'حد ضرر برنامه‌ریزی‌شده' },
-              { key: 'plannedTP', label: 'حد سود برنامه‌ریزی‌شده' },
-              { key: 'plannedRR', label: 'R:R برنامه‌ریزی‌شده' },
-              { key: 'plannedRisk', label: 'ریسک برنامه‌ریزی‌شده (%)' },
-              { key: 'plannedPositionSize', label: 'حجم برنامه‌ریزی‌شده' },
-            ].map(f => (
-              <div key={f.key} className="space-y-2">
-                <Label>{f.label}</Label>
-                <NumericInput
-                  value={(trade as any)[f.key]}
-                  onValueChange={value => handleChange(f.key as any, value)}
-                  placeholder="—"
-                />
-              </div>
-            ))}
-          </div>
-        </section>
-
         {/* SECTION 3: Position Sizing — از ۰.۰۱ لات شروع می‌شود */}
         <section className="space-y-6">
           <h2 className="text-lg font-semibold border-b pb-2">3. حجم و ریسک</h2>
@@ -1322,12 +1321,13 @@ export default function NewTrade() {
                 value={(trade as any).managementReason || ''}
                 onChange={e => handleChange('managementReason' as any, e.target.value || null)}
                 className="min-h-[80px]"
+                voice
               />
             </div>
           </section>
         )}
 
-        {/* SECTION 5: Strategy Adherence */}
+        {/* SECTION 5: Strategy Adherence — فارسی */}
         {(trade.sessionId || sessionId) && (
           <section className="space-y-6">
             <h2 className="text-lg font-semibold border-b pb-2">5. Strategy Adherence</h2>
@@ -1337,30 +1337,30 @@ export default function NewTrade() {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <div className="text-sm text-muted-foreground">Linked Session</div>
-                    <div className="font-semibold">{linkedStrategy?.name || 'Unknown Strategy'}</div>
+                    <div className="font-semibold">{linkedStrategy?.name || 'استراتژی نامشخص'}</div>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => setLocation(`/analysis/${trade.sessionId || sessionId}`)}>
-                    View Session
+                  مشاهده جلسه تحلیل
                   </Button>
                 </div>
                 
                 <div className="space-y-4">
                   <div className="space-y-1">
                     <div className="flex justify-between text-sm">
-                      <span>Adherence Score</span>
+                      <span>امتیاز پایبندی به استراتژی</span>
                       <span className="font-bold">{trade.adherenceScore ?? 0}%</span>
                     </div>
                     <Progress value={trade.adherenceScore ?? 0} className="h-2" />
                   </div>
                   
                   <div className="space-y-2">
-                    <Label>How well did you follow the rules?</Label>
+                    <Label>تا چه اندازه قوانین استراتژی را رعایت کردی؟</Label>
                     <div className="flex flex-wrap gap-2">
                       {[
-                        { v: 'fully', l: 'Fully Followed', c: 'bg-emerald-500/20 text-emerald-500 border-emerald-500/50' },
-                        { v: 'mostly', l: 'Mostly Followed', c: 'bg-teal-500/20 text-teal-500 border-teal-500/50' },
-                        { v: 'partially', l: 'Partially Followed', c: 'bg-amber-500/20 text-amber-500 border-amber-500/50' },
-                        { v: 'not', l: 'Did Not Follow', c: 'bg-rose-500/20 text-rose-500 border-rose-500/50' }
+                        { v: 'fully', l: 'کاملاً رعایت شد', c: 'bg-emerald-500/20 text-emerald-500 border-emerald-500/50' },
+                        { v: 'mostly', l: 'بیشتر قوانین رعایت شد', c: 'bg-teal-500/20 text-teal-500 border-teal-500/50' },
+                        { v: 'partially', l: 'بخشی از قوانین رعایت شد', c: 'bg-amber-500/20 text-amber-500 border-amber-500/50' },
+                        { v: 'not', l: 'رعایت نشد', c: 'bg-rose-500/20 text-rose-500 border-rose-500/50' }
                       ].map(rating => (
                         <Button
                           key={rating.v}
@@ -1375,11 +1375,12 @@ export default function NewTrade() {
                   </div>
                   
                   <div className="space-y-2">
-                    <Label>Adherence Notes</Label>
+                    <Label>یادداشت پایبندی</Label>
                     <StableTextarea
-                      placeholder="Why did you deviate from the rules?"
+                      placeholder="اگر از قوانین فاصله گرفتی، دلیل آن را بنویس…"
                       value={trade.adherenceNotes || ''}
                       onChange={e => handleChange('adherenceNotes', e.target.value)}
+                      voice
                     />
                   </div>
                 </div>
@@ -1628,6 +1629,7 @@ export default function NewTrade() {
                 value={(trade as any).lesson || ''}
                 onChange={e => handleChange('lesson' as any, e.target.value || null)}
                 className="min-h-[80px]"
+                voice
               />
             </div>
             <div className="space-y-2">
@@ -1637,6 +1639,7 @@ export default function NewTrade() {
                 value={trade.notes || ''}
                 onChange={e => handleChange('notes', e.target.value)}
                 className="min-h-[120px]"
+                voice
               />
             </div>
           </div>

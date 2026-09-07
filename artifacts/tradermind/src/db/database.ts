@@ -16,6 +16,16 @@ export function blobToObjectUrl(blob: Blob): string {
   return URL.createObjectURL(blob);
 }
 
+export type StrategyMode = 'standard' | 'major-trading' | 'session-trading';
+
+export interface StrategySetupDefinition {
+  id: string;
+  name: string;
+  trigger: string;
+  conditions: string;
+  liquidityClassification: 'major' | 'minor' | 'auto';
+}
+
 export interface Strategy {
   id: string;
   name: string;
@@ -25,6 +35,12 @@ export interface Strategy {
   isActive: boolean;
   createdAt: number;
   updatedAt: number;
+  /** ساختار اختیاری استراتژی‌های شرطی؛ برای داده‌های قدیمی nullable باقی می‌ماند. */
+  strategyMode?: StrategyMode;
+  higherTimeframes?: string;
+  lowerTimeframes?: string;
+  liquidityZones?: string;
+  setupDefinitions?: string;
 }
 
 export interface Phase {

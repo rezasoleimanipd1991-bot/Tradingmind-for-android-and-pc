@@ -171,6 +171,13 @@ export default function Dashboard() {
   const [, setLocation] = useLocation();
   const tradingTimeMode = useAppStore(s => s.tradingTimeMode);
   const brokerUtcOffsetMinutes = useAppStore(s => s.brokerUtcOffsetMinutes);
+  const dashShowTrades = useAppStore(s => s.dashShowTrades);
+  const dashShowWinRate = useAppStore(s => s.dashShowWinRate);
+  const dashShowPnl = useAppStore(s => s.dashShowPnl);
+  const dashShowAvgR = useAppStore(s => s.dashShowAvgR);
+  const dashShowRecentTrades = useAppStore(s => s.dashShowRecentTrades);
+  const dashShowLastJournal = useAppStore(s => s.dashShowLastJournal);
+  const dashShowAdherence = useAppStore(s => s.dashShowAdherence);
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -720,30 +727,38 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <StatCard
-                label="تعداد معاملات"
-                value={rangedStats.total.toLocaleString("fa-IR")}
-                sub={`${rangedStats.closedCount.toLocaleString("fa-IR")} بسته`}
-              />
-              <StatCard
-                label="درصد برد"
-                value={`${rangedStats.winRate.toFixed(1)}٪`}
-                valueClass={rangedStats.winRate >= 50 ? "text-emerald-500" : "text-rose-500"}
-              />
-              <StatCard
-                label="سود / ضرر"
-                value={`${rangedStats.totalPnl >= 0 ? "+" : ""}$${rangedStats.totalPnl.toFixed(2)}`}
-                valueClass={rangedStats.totalPnl >= 0 ? "text-emerald-500" : "text-rose-500"}
-              />
-              <StatCard
-                label="میانگین R"
-                value={rangedStats.avgR != null ? `${rangedStats.avgR.toFixed(2)}R` : "—"}
-                valueClass={
-                  rangedStats.avgR == null ? undefined
-                  : rangedStats.avgR >= 0 ? "text-emerald-500"
-                  : "text-rose-500"
-                }
-              />
+              {dashShowTrades && (
+                <StatCard
+                  label="تعداد معاملات"
+                  value={rangedStats.total.toLocaleString("fa-IR")}
+                  sub={`${rangedStats.closedCount.toLocaleString("fa-IR")} بسته`}
+                />
+              )}
+              {dashShowWinRate && (
+                <StatCard
+                  label="درصد برد"
+                  value={`${rangedStats.winRate.toFixed(1)}٪`}
+                  valueClass={rangedStats.winRate >= 50 ? "text-emerald-500" : "text-rose-500"}
+                />
+              )}
+              {dashShowPnl && (
+                <StatCard
+                  label="سود / ضرر"
+                  value={`${rangedStats.totalPnl >= 0 ? "+" : ""}$${rangedStats.totalPnl.toFixed(2)}`}
+                  valueClass={rangedStats.totalPnl >= 0 ? "text-emerald-500" : "text-rose-500"}
+                />
+              )}
+              {dashShowAvgR && (
+                <StatCard
+                  label="میانگین R"
+                  value={rangedStats.avgR != null ? `${rangedStats.avgR.toFixed(2)}R` : "—"}
+                  valueClass={
+                    rangedStats.avgR == null ? undefined
+                    : rangedStats.avgR >= 0 ? "text-emerald-500"
+                    : "text-rose-500"
+                  }
+                />
+              )}
             </div>
           )}
         </CardContent>
@@ -905,7 +920,7 @@ export default function Dashboard() {
       <div className="grid gap-4 lg:grid-cols-2">
 
         {/* آخرین معاملات */}
-        <Card className="flex flex-col">
+        {dashShowRecentTrades && <Card className="flex flex-col">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
@@ -953,10 +968,10 @@ export default function Dashboard() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </Card>}
 
         {/* آخرین ژورنال‌ها */}
-        <Card className="flex flex-col">
+        {dashShowLastJournal && <Card className="flex flex-col">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
@@ -995,7 +1010,7 @@ export default function Dashboard() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </Card>}
       </div>
 
       {/* ━━━━━━━━━━━━━━━━ 6. آخرین استراتژی + پایبندی ━━━━━━━━━━━━━━━━ */}
@@ -1027,7 +1042,7 @@ export default function Dashboard() {
         )}
 
         {/* پایبندی به استراتژی */}
-        <Card>
+        {dashShowAdherence && <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Shield className="w-4 h-4 text-primary" /> پایبندی به قوانین استراتژی
@@ -1059,7 +1074,7 @@ export default function Dashboard() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </Card>}
       </div>
 
       {/* ━━━━━━━━━━━━━━━━ 7. نمودارهای تحلیلی ━━━━━━━━━━━━━━━━ */}

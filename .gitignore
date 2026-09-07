@@ -2,6 +2,7 @@
 
 # compiled output
 dist
+artifacts/*/dist-electron
 tmp
 out-tsc
 *.tsbuildinfo

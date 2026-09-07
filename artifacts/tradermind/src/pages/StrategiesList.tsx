@@ -40,6 +40,11 @@ export default function StrategiesList() {
         icon: null,
         colorTag: '#3b82f6',
         isActive: true,
+        strategyMode: 'standard',
+        higherTimeframes: '4H',
+        lowerTimeframes: '15M, 5M, 1M',
+        liquidityZones: '',
+        setupDefinitions: JSON.stringify([]),
       });
       toast.success('استراتژی ساخته شد');
       setLocation(`/strategies/${strat.id}`);
