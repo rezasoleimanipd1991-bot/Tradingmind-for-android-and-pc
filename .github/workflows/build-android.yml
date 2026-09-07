@@ -25,6 +25,12 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Install pinned Android SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
@@ -55,11 +61,11 @@ jobs:
 
       - name: Add Android platform (Capacitor init)
         working-directory: artifacts/tradermind
-        run: npx cap add android
+        run: pnpm exec cap add android
 
       - name: Sync Capacitor (copy web assets to Android project)
         working-directory: artifacts/tradermind
-        run: npx cap sync android
+        run: pnpm exec cap sync android
 
       - name: Cache Gradle dependencies
         uses: actions/cache@v4
@@ -76,7 +82,7 @@ jobs:
 
       - name: Build debug APK
         working-directory: artifacts/tradermind/android
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
 

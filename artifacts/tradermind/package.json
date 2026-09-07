@@ -77,6 +77,8 @@
     "cmdk": "^1.1.1",
     "date-fns": "^3.6.0",
     "embla-carousel-react": "^8.6.0",
+    "electron": "^39.0.0",
+    "electron-builder": "^26.0.0",
     "fake-indexeddb": "^6.2.5",
     "framer-motion": "catalog:",
     "input-otp": "^1.4.2",

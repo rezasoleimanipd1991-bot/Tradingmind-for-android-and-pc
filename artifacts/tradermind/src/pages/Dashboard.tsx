@@ -117,9 +117,11 @@ interface DashboardData {
   sessionProgress: Map<string, SessionProgress>;
 }
 
-async function loadDashboardData(): Promise<DashboardData> {
+async function loadDashboardData(queryFrom?: number, queryTo?: number): Promise<DashboardData> {
   const [trades, sessions, journals, strategies, todayJournal] = await Promise.all([
-    tradeService.getAllTrades(),
+    queryFrom !== undefined && queryTo !== undefined
+      ? tradeService.getTradesByDateRange(queryFrom, queryTo)
+      : tradeService.getTradesByDateRange(Date.now() - 90 * 24 * 60 * 60 * 1000, Date.now()),
     analysisService.getAllSessions(),
     journalService.getAllJournals(),
     strategyService.getAllStrategies(),
@@ -127,7 +129,7 @@ async function loadDashboardData(): Promise<DashboardData> {
   ]);
 
   // بارگذاری اطلاعات پیشرفت برای Session‌های نیمه‌کاره
-  const inProgress = sessions.filter(s => s.status === "in-progress");
+  const inProgress = sessions.filter(s => s.status === "in-progress").slice(0, 12);
   const sessionProgress = new Map<string, SessionProgress>();
 
   await Promise.all(inProgress.map(async session => {
@@ -171,6 +173,7 @@ export default function Dashboard() {
   const brokerUtcOffsetMinutes = useAppStore(s => s.brokerUtcOffsetMinutes);
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [rangeKey, setRangeKey] = useState<RangeKey>("week");
   const [customFrom, setCustomFrom] = useState<string>(() => {
     const d = new Date(); d.setDate(d.getDate() - 30);
@@ -183,8 +186,20 @@ export default function Dashboard() {
   const customFromRef = useRef<HTMLInputElement>(null);
 
   const reload = useCallback(() => {
-    loadDashboardData().then(setData).finally(() => setLoading(false));
-  }, []);
+    setLoading(true);
+    setError(null);
+    const selected = rangeKey === "custom"
+      ? {
+          from: getTradingDateRange(customFrom).from,
+          to: getTradingDateRange(customTo).to,
+        }
+      : getDateRange(rangeKey);
+    const duration = Math.max(24 * 60 * 60 * 1000, selected.to - selected.from);
+    return loadDashboardData(Math.max(0, selected.from - duration), selected.to)
+      .then(setData)
+      .catch(() => setError("بارگذاری داشبورد انجام نشد. لطفاً دوباره تلاش کنید."))
+      .finally(() => setLoading(false));
+  }, [rangeKey, customFrom, customTo]);
 
   useEffect(() => { reload(); }, [reload]);
   useEffect(() => {
@@ -431,6 +446,16 @@ export default function Dashboard() {
           <Skeleton className="h-40 rounded-xl" />
           <Skeleton className="h-40 rounded-xl" />
         </div>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 text-center" dir="rtl">
+        <AlertCircle className="h-10 w-10 text-destructive" />
+        <p className="text-muted-foreground">{error || "اطلاعات داشبورد در دسترس نیست."}</p>
+        <Button variant="outline" onClick={reload}>تلاش مجدد</Button>
       </div>
     );
   }

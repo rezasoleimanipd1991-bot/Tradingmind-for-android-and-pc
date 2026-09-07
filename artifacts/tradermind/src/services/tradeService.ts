@@ -13,6 +13,14 @@ export const tradeService = {
     return db.trades.orderBy('openedAt').reverse().toArray();
   },
 
+  async getTradesByDateRange(from: number, to: number) {
+    return db.trades
+      .where('openedAt')
+      .between(from, to, true, true)
+      .reverse()
+      .toArray();
+  },
+
   async getTradeById(id: string) {
     return db.trades.get(id);
   },

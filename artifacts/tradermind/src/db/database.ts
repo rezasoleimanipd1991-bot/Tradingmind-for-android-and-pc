@@ -1366,22 +1366,10 @@ class TraderMindDB extends Dexie {
       screenshotCollections: 'id, name, isDefault, createdAt',
       accounts: 'id, name, isDefault, createdAt',
       tradingBoxes: 'id, name, status, createdAt',
-    }).upgrade(async tx => {
-      // تبدیل dataUrl → imageBlob برای تمام رکوردهای موجود
-      const screenshots = await tx.table('chartScreenshots').toArray();
-      for (const ss of screenshots) {
-        if (ss.dataUrl && ss.dataUrl.startsWith('data:') && !ss.imageBlob) {
-          try {
-            const blob = dataUrlToBlob(ss.dataUrl);
-            await tx.table('chartScreenshots').update(ss.id, {
-              imageBlob: blob,
-              dataUrl: '',      // پاکسازی Base64 پس از تبدیل موفق
-            });
-          } catch {
-            // اگر تبدیل شکست خورد، dataUrl را نگه می‌داریم
-          }
-        }
-      }
+    }).upgrade(() => {
+      // مهاجرت Base64 به Blob عمداً در schema upgrade انجام نمی‌شود.
+      // تبدیل همهٔ تصاویر می‌تواند بازشدن کل برنامه را روی موبایل قفل کند؛
+      // این کار بعد از بازشدن DB و به‌صورت batch انجام می‌شود.
     });
 
     // ====================================================
@@ -1451,10 +1439,54 @@ class TraderMindDB extends Dexie {
         if (box.accountId === undefined) box.accountId = null;
       });
     });
+
+    // نسخه ۲۳: مهاجرت‌های حجیم از چرخهٔ بازشدن دیتابیس خارج شده‌اند.
+    this.version(23).upgrade(() => undefined);
   }
 }
 
 export const db = new TraderMindDB();
+
+/**
+ * تبدیل تدریجی تصاویر قدیمی بعد از بازشدن برنامه.
+ * این تابع عمداً توسط startup با تأخیر اجرا می‌شود تا routeهای اصلی ابتدا در دسترس باشند.
+ */
+export async function migrateChartScreenshotsToBlobs(batchSize = 20): Promise<number> {
+  const screenshots = await db.chartScreenshots.toArray();
+  let migrated = 0;
+
+  for (let offset = 0; offset < screenshots.length; offset += batchSize) {
+    const batch = screenshots.slice(offset, offset + batchSize);
+    const updates = batch
+      .filter(screenshot =>
+        typeof screenshot.dataUrl === 'string' &&
+        screenshot.dataUrl.startsWith('data:') &&
+        !screenshot.imageBlob
+      )
+      .map(screenshot => {
+        try {
+          return {
+            key: screenshot.id,
+            changes: {
+              imageBlob: dataUrlToBlob(screenshot.dataUrl),
+              dataUrl: '',
+            },
+          };
+        } catch {
+          return null;
+        }
+      })
+      .filter((update): update is { key: string; changes: { imageBlob: Blob; dataUrl: string } } => Boolean(update));
+
+    if (updates.length > 0) {
+      await db.chartScreenshots.bulkUpdate(updates);
+      migrated += updates.length;
+    }
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
+  }
+
+  return migrated;
+}
 
 /** مقادیر پیش‌فرض */
 export const defaultPreTradingState: PreTradingState = {

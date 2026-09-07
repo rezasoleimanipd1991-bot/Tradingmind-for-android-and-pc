@@ -261,15 +261,23 @@ export async function seedInitialData(): Promise<void> {
     );
   }
 
-  // استراتژی‌های اولیه باید واقعاً قابل اجرا باشند. نسخه‌های قبلی فقط
-  // خود استراتژی را می‌ساختند و SessionRunner برای همیشه در حالت loading می‌ماند.
-  const strategies = await db.strategies.toArray();
-  for (const strategy of strategies) {
-    const phaseCount = await db.phases.where('strategyId').equals(strategy.id).count();
-    if (phaseCount > 0) continue;
+  // استراتژی‌های اولیه باید واقعاً قابل اجرا باشند. این repair فقط یک‌بار
+  // انجام می‌شود تا هر بار ورود به برنامه باعث scan و queryهای N+1 نشود.
+  let shouldRepairTemplates = true;
+  try {
+    shouldRepairTemplates = localStorage.getItem('tradermind-analysis-template-v1') !== 'done';
+  } catch {
+    // اگر localStorage در محیط محدود در دسترس نبود، repair را انجام می‌دهیم.
+  }
 
-    const now = Date.now();
-    const phaseDefinitions = [
+  if (shouldRepairTemplates) {
+    const strategies = await db.strategies.toArray();
+    for (const strategy of strategies) {
+      const phaseCount = await db.phases.where('strategyId').equals(strategy.id).count();
+      if (phaseCount > 0) continue;
+
+      const now = Date.now();
+      const phaseDefinitions = [
       {
         name: 'زمینه و جهت بازار',
         description: 'بازار، تایم‌فریم بالاتر و جهت غالب را بررسی کنید.',
@@ -296,29 +304,35 @@ export async function seedInitialData(): Promise<void> {
       },
     ];
 
-    const phases: Phase[] = phaseDefinitions.map((phase, phaseIndex) => ({
-      id: crypto.randomUUID(),
-      strategyId: strategy.id,
-      name: phase.name,
-      description: phase.description,
-      order: phaseIndex,
-    }));
-    await db.phases.bulkAdd(phases);
-
-    const steps: Step[] = phases.flatMap((phase, phaseIndex) =>
-      phaseDefinitions[phaseIndex].steps.map((step, stepIndex) => ({
+      const phases: Phase[] = phaseDefinitions.map((phase, phaseIndex) => ({
         id: crypto.randomUUID(),
-        phaseId: phase.id,
-        name: step.name,
-        description: step.description,
-        type: step.type,
-        required: step.required,
-        order: stepIndex,
-        options: 'options' in step ? (step.options ?? '[]') : '[]',
-        hint: null,
-      })),
-    );
-    await db.steps.bulkAdd(steps);
+        strategyId: strategy.id,
+        name: phase.name,
+        description: phase.description,
+        order: phaseIndex,
+      }));
+      await db.phases.bulkAdd(phases);
+
+      const steps: Step[] = phases.flatMap((phase, phaseIndex) =>
+        phaseDefinitions[phaseIndex].steps.map((step, stepIndex) => ({
+          id: crypto.randomUUID(),
+          phaseId: phase.id,
+          name: step.name,
+          description: step.description,
+          type: step.type,
+          required: step.required,
+          order: stepIndex,
+          options: 'options' in step ? (step.options ?? '[]') : '[]',
+          hint: null,
+        })),
+      );
+      await db.steps.bulkAdd(steps);
+    }
+    try {
+      localStorage.setItem('tradermind-analysis-template-v1', 'done');
+    } catch {
+      // در اجرای بعدی دوباره بررسی می‌شود.
+    }
   }
 
   const tradeCount = await db.trades.count();

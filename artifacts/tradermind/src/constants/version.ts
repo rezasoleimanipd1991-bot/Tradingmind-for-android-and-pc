@@ -13,10 +13,10 @@
  */
 
 export const APP_VERSION = '1.4.0';
-export const DB_VERSION = 22;
+export const DB_VERSION = 23;
 export const BACKUP_FORMAT_VERSION = '3.0';
 /** نسخه Schema برای فایل‌های پشتیبان */
-export const SCHEMA_VERSION = 21;
+export const SCHEMA_VERSION = 22;
 
 /** نام کامل برنامه برای نمایش به کاربر */
 export const APP_NAME = 'TraderMind';
