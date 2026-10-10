@@ -1277,6 +1277,17 @@ export const backupService = {
       'شماره تیکت': t.ticketNumber ?? '',
       کمیسیون: t.commission ?? '',
       اسپرد: t.spread ?? '',
+<<<<<<< HEAD
+=======
+      'هزینه کل': [t.fees, t.commission, t.spread]
+        .map((value: unknown) => value)
+        .reduce<number>((sum, value) => sum + (typeof value === 'number' ? Math.abs(value) : 0), 0),
+      'سود/زیان خالص': typeof t.profitLoss === 'number'
+        ? t.profitLoss - [t.fees, t.commission, t.spread]
+          .map((value: unknown) => value)
+          .reduce<number>((sum, value) => sum + (typeof value === 'number' ? Math.abs(value) : 0), 0)
+        : '',
+>>>>>>> 3cd99cf27b0b3c453d04111be80d4f35c10fecf0
       'قیمت ورود': t.entryPrice,
       'قیمت خروج': t.exitPrice ?? '',
       'حد ضرر': t.stopLoss,

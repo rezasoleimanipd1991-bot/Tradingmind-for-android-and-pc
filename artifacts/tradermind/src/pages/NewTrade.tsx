@@ -103,12 +103,15 @@ const QUICK_SYMBOLS = [
 ];
 const CUSTOM_SYMBOLS_KEY = 'tradermind-custom-symbols';
 const CUSTOM_SETUPS_KEY = 'tradermind-custom-setups';
+<<<<<<< HEAD
 
 const QUICK_TEMPLATES = [
   { id: 'trend-long', label: 'روندی لانگ', direction: 'long' as const, setupType: 'trend-continuation', tradingSession: 'london' },
   { id: 'trend-short', label: 'روندی شورت', direction: 'short' as const, setupType: 'trend-continuation', tradingSession: 'new-york' },
   { id: 'liquidity-reversal', label: 'لو‌هانت و برگشت', direction: 'long' as const, setupType: 'liquidity-grab', tradingSession: 'london' },
 ];
+=======
+>>>>>>> 3cd99cf27b0b3c453d04111be80d4f35c10fecf0
 
 function getCustomSymbols(): { label: string; value: string; market: string }[] {
   try {
@@ -211,9 +214,14 @@ function NumericInput({
 function StableTextarea({
   value,
   onChange,
+<<<<<<< HEAD
   voice = false,
   ...props
 }: ComponentProps<typeof Textarea> & { voice?: boolean }) {
+=======
+  ...props
+}: ComponentProps<typeof Textarea>) {
+>>>>>>> 3cd99cf27b0b3c453d04111be80d4f35c10fecf0
   const externalValue = typeof value === 'string' ? value : '';
   const [text, setText] = useState(externalValue);
 
@@ -223,6 +231,7 @@ function StableTextarea({
     if (externalValue !== text) setText(externalValue);
   }, [externalValue, text]);
 
+<<<<<<< HEAD
   const appendVoiceText = (spoken: string) => {
     const next = `${text}${text.trim() ? ' ' : ''}${spoken}`.trim();
     setText(next);
@@ -295,6 +304,17 @@ function VoiceInputButton({ onText }: { onText: (text: string) => void }) {
       {listening ? <MicOff className="h-3.5 w-3.5 text-rose-500" /> : <Mic className="h-3.5 w-3.5" />}
       {listening ? 'در حال شنیدن…' : 'گفتار به متن'}
     </Button>
+=======
+  return (
+    <Textarea
+      {...props}
+      value={text}
+      onChange={event => {
+        setText(event.target.value);
+        onChange?.(event);
+      }}
+    />
+>>>>>>> 3cd99cf27b0b3c453d04111be80d4f35c10fecf0
   );
 }
 
@@ -1193,10 +1213,14 @@ export default function NewTrade() {
           <section className="space-y-4">
             <h2 className="text-lg font-semibold border-b pb-2">۳ب. دلیل ورود</h2>
             <div className="space-y-2">
+<<<<<<< HEAD
               <div className="flex items-center justify-between">
                 <Label>دلیل ورود به معامله</Label>
                 <VoiceInputButton onText={text => handleChange('entryReason' as any, `${(trade as any).entryReason || ''}${(trade as any).entryReason ? ' ' : ''}${text}`)} />
               </div>
+=======
+              <Label>دلیل ورود به معامله</Label>
+>>>>>>> 3cd99cf27b0b3c453d04111be80d4f35c10fecf0
               <StableTextarea
                 placeholder="چرا وارد این معامله شدید؟ چه چیزی را در چارت دیدید؟ ستاپ چه بود؟"
                 value={(trade as any).entryReason || ''}
@@ -1375,9 +1399,15 @@ export default function NewTrade() {
                   </div>
                   
                   <div className="space-y-2">
+<<<<<<< HEAD
                     <Label>یادداشت پایبندی</Label>
                     <StableTextarea
                       placeholder="اگر از قوانین فاصله گرفتی، دلیل آن را بنویس…"
+=======
+                    <Label>Adherence Notes</Label>
+                    <StableTextarea
+                      placeholder="Why did you deviate from the rules?"
+>>>>>>> 3cd99cf27b0b3c453d04111be80d4f35c10fecf0
                       value={trade.adherenceNotes || ''}
                       onChange={e => handleChange('adherenceNotes', e.target.value)}
                       voice
@@ -1460,6 +1490,7 @@ export default function NewTrade() {
                       </div>
                       <div className="space-y-1 sm:col-span-2">
                         <Label className="text-xs">زمینه و یادداشت</Label>
+<<<<<<< HEAD
                         <StableTextarea value={tfData.context || ''} onChange={e => update('context', e.target.value)} placeholder={`زمینه و تحلیل ${tf} را وارد کنید…`} className="min-h-[60px] text-sm" />
                       </div>
                       <div className="space-y-1">
@@ -1469,6 +1500,9 @@ export default function NewTrade() {
                       <div className="space-y-1">
                         <Label className="text-xs">سطوح مهم</Label>
                         <Input value={tfData.importantLevels || ''} onChange={e => update('importantLevels', e.target.value)} placeholder="سطوح قیمت…" className="h-8 text-sm" />
+=======
+                       <StableTextarea value={tfData.notes || ''} onChange={e => update('notes', e.target.value)} placeholder={`تحلیل ${tf} را وارد کنید…`} className="min-h-[60px] text-sm" />
+>>>>>>> 3cd99cf27b0b3c453d04111be80d4f35c10fecf0
                       </div>
                     </div>
                   </CardContent>
