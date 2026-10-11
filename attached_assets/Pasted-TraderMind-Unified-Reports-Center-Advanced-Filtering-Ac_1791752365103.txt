@@ -1,0 +1,303 @@
+TraderMind — Unified Reports Center & Advanced Filtering
+
+Act as a senior product designer, software architect, React/TypeScript engineer, data visualization specialist, and trading analytics expert.
+
+I want to redesign the reporting system of my existing TraderMind trading journal.
+
+1. Main Objective
+
+Currently, the application has multiple reporting pages and sections. Some reports overlap, repeat the same information, or display similar statistics in different places.
+
+I want to consolidate all existing reports into ONE centralized reporting page called:
+
+Reports Center
+
+The user must be able to select which reports, metrics, charts, and analytical sections they want to view through filters and selectable options, instead of navigating through multiple separate reporting pages.
+
+This must be an improvement to the existing application, not a new standalone application.
+
+2. Mandatory Preliminary Audit
+
+Before changing any code:
+
+1. Inspect all existing report pages, dashboards, statistics panels, analytical components, charts, tables, and report-related routes.
+2. Identify every existing report and the metrics it contains.
+3. Find duplicate and overlapping reports.
+4. Identify the source of each metric and the calculation used to produce it.
+5. Determine which reports should be merged, which should remain separate report sections, and which contain unique information that must be preserved.
+6. Inspect the existing database schema, data models, state management, and report calculation utilities.
+7. Create a mapping between the current reporting system and the proposed unified Reports Center.
+
+Do not assume that similarly named metrics are calculated identically. Verify their definitions and data sources before consolidating them.
+
+After the preliminary audit, implement the changes in a controlled manner without waiting for additional approval, provided the changes can be made safely and preserve existing functionality and data.
+
+3. Unified Reports Page
+
+Create one main Reports Center page with a clean, professional, modern trading-terminal design consistent with the existing TraderMind interface.
+
+The page should contain:
+
+A. Report Selection Panel
+
+Allow users to choose which report sections they want to display.
+
+Use a searchable, categorized multi-select interface with checkboxes.
+
+Organize available reports into suitable categories, based on the features actually present in the application:
+
+- Performance Overview
+- Profit & Loss
+- Risk Analysis
+- Trade Statistics
+- Trading Sessions
+- Time-Based Analysis
+- Strategy Analysis
+- Setup and Scenario Analysis
+- Multi-Timeframe Analysis (MTF)
+- Trading Psychology
+- Execution Quality
+- Mistakes and Lessons Learned
+- Tags and Custom Categories
+- Long vs. Short Analysis
+- Market and Instrument Analysis
+- Custom Reports
+
+Only include sections that can be supported by existing data and functionality. Clearly indicate when a report requires data that is not available.
+
+Users should be able to select one report, several reports, or all available reports.
+
+Provide convenient controls such as:
+
+- Select All
+- Clear All
+- Default View
+- Save View, if compatible with the existing architecture
+
+B. Global Filters
+
+Provide one centralized filter panel that applies consistently to all selected reports.
+
+Include the following filters where supported:
+
+- Date range: Today, Yesterday, Last 7 Days, Last 30 Days, Last 90 Days, This Month, Last Month, This Year, All Time, and Custom Range.
+- Trade status: Open, Closed, and other supported statuses.
+- Trading instrument or symbol.
+- Long / Short.
+- Trading strategy.
+- Setup or scenario.
+- Trading session.
+- Timeframe.
+- Psychology tags.
+- Execution quality.
+- Mistakes and lessons.
+- Custom tags.
+- Account or portfolio, if supported.
+
+Use searchable multi-select controls where appropriate.
+
+Users must be able to combine multiple filters. Apply the intersection of selected filters consistently across every report section.
+
+Show active filters as removable chips and provide a Clear Filters action.
+
+Do not invent filters that cannot be supported by the existing data model.
+
+C. Summary Metrics
+
+At the top of the page, show summary cards for relevant metrics, such as:
+
+- Total Trades
+- Winning Trades
+- Losing Trades
+- Win Rate
+- Net Profit / Loss
+- Average Win
+- Average Loss
+- Profit Factor
+- Average R-Multiple
+- Total Risk
+- Maximum Drawdown, if correctly supported
+
+The selected filters must affect every summary metric.
+
+Avoid duplicate summary cards and avoid showing metrics that cannot be calculated reliably.
+
+Clearly distinguish realized results from unrealized results and gross profit from net profit wherever relevant.
+
+D. Dynamic Report Display
+
+When a user selects report sections, display only those sections below the summary cards.
+
+Each report section should have:
+
+- A clear title and short description.
+- Relevant charts, tables, or statistics.
+- Consistent date and filter behavior.
+- Loading, empty, and error states.
+- A way to collapse or expand the section.
+- A way to remove the section from the current view.
+
+Do not display unselected reports unnecessarily.
+
+Avoid rendering multiple charts that communicate the same information unless they answer meaningfully different analytical questions.
+
+Allow users to reorder report sections if this can be implemented reliably.
+
+E. Saved Report Views
+
+If practical within the existing architecture, allow users to save their preferred report configurations.
+
+A saved view should preserve:
+
+- Selected report sections.
+- Filter configuration.
+- Date range.
+- Section order.
+- Display preferences.
+
+Provide options to create, rename, load, and delete saved views.
+
+Store saved views locally using the application's existing persistence architecture. Do not introduce cloud storage or external services.
+
+Saved report views must not overwrite or modify actual trade records.
+
+4. Remove Duplication Without Losing Functionality
+
+This is one of the most important requirements.
+
+- Consolidate duplicated reports and redundant navigation entries.
+- Preserve every unique metric, chart, table, and analytical capability that provides genuine value.
+- Reuse existing calculation utilities whenever appropriate.
+- Avoid creating separate implementations of the same metric.
+- Use a shared, consistent source of truth for calculations.
+- Preserve the original definitions of metrics unless a verified defect requires correction.
+- Do not silently change historical statistics.
+- Do not delete existing report components until their unique functionality has been mapped and migrated.
+- Retain backward compatibility with existing trade data.
+- Keep the existing trade creation, editing, execution, analysis, review, and journal workflows working as before.
+
+After migration, remove obsolete report routes or navigation entries only when the replacement functionality has been verified.
+
+5. Trading Analytics Correctness
+
+All report sections must respect the application's actual business rules.
+
+Verify:
+
+- Win-rate denominator and treatment of breakeven trades.
+- Net versus gross P&L.
+- Commissions, swaps, fees, and other costs where supported.
+- Open versus closed trades.
+- Partial exits and multiple executions where supported.
+- Long and short calculations.
+- R-multiple and risk/reward calculations.
+- Missing or incomplete trade records.
+- Date filtering and timezone boundaries.
+- Empty datasets and zero-denominator cases.
+- Consistency between summary cards, charts, tables, and exported results.
+
+Do not infer missing trade data or fabricate historical values.
+
+If two existing reports use different definitions of a metric, identify the discrepancy before unifying them.
+
+6. Performance and Offline Compatibility
+
+TraderMind is intended to be an offline-first trading journal.
+
+- Keep all core report calculations and data access local.
+- Do not add external APIs, cloud analytics, or online dependencies.
+- Avoid unnecessary database reads and repeated expensive calculations.
+- Use memoization or other appropriate optimization where beneficial.
+- Ensure large trade histories do not make the reporting page unresponsive.
+- Keep the implementation compatible with the existing React, TypeScript, database, and application architecture.
+- Preserve compatibility with the existing PWA, Android, and Windows/Electron versions where applicable.
+
+7. Exporting Reports
+
+If export functionality already exists, integrate it into the unified Reports Center.
+
+Allow exporting the currently selected reports and filtered dataset in the formats already supported by the application.
+
+If feasible, provide CSV and a print-friendly report.
+
+Exports must reflect the active filters and selected report sections. Clearly label the date range and applied filters.
+
+Do not add a new export dependency unless it is genuinely necessary.
+
+8. UI and UX Requirements
+
+- Match the existing TraderMind visual design and theme.
+- Keep the page responsive on desktop, tablet, and mobile.
+- Make the report selector easy to find and use.
+- Avoid overwhelming the user with too many visible controls at once.
+- Use collapsible filter panels and grouped selections where helpful.
+- Provide clear feedback when no trades match the selected filters.
+- Make active filters and selected reports easy to understand.
+- Maintain accessible labels, keyboard navigation, and visible focus states.
+
+9. Implementation and Regression Testing
+
+Before implementation, record the existing reporting routes and unique features.
+
+After implementation:
+
+1. Run the available type checks and relevant tests.
+2. Run the production build if supported.
+3. Verify that every migrated report produces the expected results.
+4. Test combinations of global filters.
+5. Verify that summary cards, charts, and tables use consistent filtered data.
+6. Test empty datasets, missing values, date boundaries, and large datasets.
+7. Verify saved views and report exports, if implemented.
+8. Confirm that existing trade data is unchanged.
+9. Confirm that existing trade management workflows still work.
+10. Verify the page on supported platforms to the extent the environment permits.
+
+Do not claim that a test passed unless it was actually executed.
+
+If a test fails, investigate the cause and report it accurately.
+
+10. Final Deliverables
+
+After implementation, provide:
+
+- A summary of the old report pages and how they were consolidated.
+- A list of added, modified, and removed files.
+- A mapping of every old report to its new location.
+- A list of duplicate reports that were consolidated.
+- A list of unique features that were preserved.
+- Details of global filters and supported report sections.
+- Details of saved views and export functionality.
+- Test commands and actual results.
+- Known limitations and remaining issues.
+
+The final result should be a single, centralized, filter-driven Reports Center that provides all existing reporting capabilities without unnecessary duplication.
+
+Prioritize data integrity, correct trading calculations, offline functionality, and backward compatibility over visual changes.
+
+Start by auditing the existing reports, then implement the consolidation systematically.
+
+Additional Mandatory Requirements — Reporting Consolidation
+
+1. Before implementing changes, create a complete mapping of every existing report, chart, table, metric, filter, and export feature. Do not omit any existing reporting capability without documenting the reason.
+
+2. The Reports Center must be the single primary destination for all analytical reports. Remove redundant report pages and navigation entries only after their functionality has been successfully migrated and tested. Do not remove unrelated pages such as trade entry, trade execution, trade review, or journal management.
+
+3. Every report must use consistent global filters and a shared, verified data source. Changing a global filter must update all relevant summary cards, charts, tables, and statistics consistently.
+
+4. Provide independent filters within individual report sections only when they serve a genuinely different analytical purpose. Clearly distinguish section-specific filters from global filters.
+
+5. Prevent duplicate metrics and duplicate calculations. If multiple existing reports contain the same metric, consolidate them into a single authoritative calculation and verify that the result matches the intended existing business definition.
+
+6. Preserve every unique report, analytical capability, and historical calculation definition. Do not silently change metric definitions or historical results.
+
+7. Make the report selector searchable and categorized. Support multi-selection, select all, clear selection, collapsing sections, and restoring the default view.
+
+8. Make saved report views persistent across application restarts using the existing local storage architecture. Saved views must not modify actual trading records.
+
+9. Before removing old components or routes, verify that their replacement works. Maintain a migration checklist and document the old-to-new mapping.
+
+10. Implement the changes in small, verifiable stages. After each stage, run relevant checks and inspect the changes for regressions. Do not perform a large, uncontrolled rewrite of the entire application.
+
+11. At completion, provide an explicit checklist confirming which original reports were migrated, merged, retained, or removed, and identify any features that remain incomplete.
+
+12. Do not claim the reporting system is fully consolidated until every existing report has been accounted for and the relevant replacement functionality has been verified.
