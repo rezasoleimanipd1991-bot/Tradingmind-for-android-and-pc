@@ -20,6 +20,8 @@ import { Progress } from "../components/ui/progress";
 import { format } from "date-fns";
 import ScreenshotManager from "../components/ScreenshotManager";
 import { TradeScreenshot } from "../types/screenshot";
+import { getNetPnl } from "../lib/tradeHelpers";
+import { VoiceTypingButton } from "../components/ui/VoiceTypingButton";
 
 // نگاشت ID احساس (انگلیسی) به برچسب فارسی برای نمایش
 const EMOTION_LABELS_FA: Record<string, string> = {
@@ -290,9 +292,9 @@ export default function TradeDetail() {
             value: trade.exitPrice !== null ? trade.exitPrice : <span className="text-primary text-lg">باز</span>,
           },
           {
-            label: 'سود / زیان',
-            value: trade.profitLoss !== null ? `$${trade.profitLoss.toFixed(2)}` : '-',
-            cls: trade.profitLoss ? (trade.profitLoss > 0 ? 'text-emerald-500' : 'text-rose-500') : '',
+            label: 'سود / زیان خالص',
+            value: getNetPnl(trade) !== null ? `$${getNetPnl(trade)!.toFixed(2)}` : '-',
+            cls: getNetPnl(trade) ? (getNetPnl(trade)! > 0 ? 'text-emerald-500' : 'text-rose-500') : '',
           },
           { label: 'R Multiple', value: trade.rMultiple !== null ? `${trade.rMultiple}R` : '-' },
         ].map((c, i) => (
@@ -326,7 +328,9 @@ export default function TradeDetail() {
                   { label: 'حجم پوزیشن', value: trade.positionSize || '-' },
                   { label: 'ریسک (٪)', value: trade.riskPercentage !== null ? `${trade.riskPercentage}٪` : '-' },
                   { label: 'مقدار ریسک', value: trade.riskAmount !== null ? `$${trade.riskAmount}` : '-' },
-                  { label: 'کمیسیون', value: trade.fees !== null ? `$${trade.fees}` : '-' },
+                  { label: 'سایر هزینه‌ها', value: trade.fees != null ? `$${trade.fees}` : '-' },
+                  { label: 'کمیسیون', value: trade.commission != null ? `$${trade.commission}` : '-' },
+                  { label: 'اسپرد', value: trade.spread != null ? `$${trade.spread}` : '-' },
                 ].map((f, i) => (
                   <div key={i}>
                     <div className="text-muted-foreground">{f.label}</div>
@@ -607,14 +611,17 @@ export default function TradeDetail() {
             <CardContent className="space-y-4">
               {/* افزودن یادداشت جدید */}
               <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newEventNote}
-                  onChange={e => setNewEventNote(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleAddEvent()}
-                  placeholder="یادداشت جدید بزنید…"
-                  className="flex-1 h-8 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                />
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div className="flex h-5 justify-end"><VoiceTypingButton /></div>
+                  <input
+                    type="text"
+                    value={newEventNote}
+                    onChange={e => setNewEventNote(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleAddEvent()}
+                    placeholder="یادداشت جدید بزنید…"
+                    className="h-8 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                </div>
                 <Button size="sm" onClick={handleAddEvent} disabled={addingEvent || !newEventNote.trim()} className="h-8 gap-1">
                   <Plus className="w-3.5 h-3.5" />
                 </Button>

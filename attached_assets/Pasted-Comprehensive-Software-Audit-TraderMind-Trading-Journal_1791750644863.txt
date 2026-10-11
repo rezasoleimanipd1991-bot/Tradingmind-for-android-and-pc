@@ -1,0 +1,378 @@
+Comprehensive Software Audit — TraderMind Trading Journal
+
+Act as a senior software architect, senior full-stack engineer, QA automation engineer, application security specialist, database engineer, and professional trading-journal domain expert.
+
+Your task is to conduct a comprehensive, evidence-based technical audit of my entire TraderMind trading journal application.
+
+The objective is to determine whether the application is correct, reliable, secure, stable, maintainable, and ready for real-world use.
+
+CRITICAL RULES
+
+1. AUDIT ONLY. Do not modify, rewrite, delete, rename, move, or automatically format any source files.
+2. Do not install, remove, upgrade, or downgrade dependencies.
+3. Do not modify database schemas, migrations, configuration files, environment variables, build scripts, Git settings, or application behavior.
+4. Do not run destructive commands, delete user data, reset databases, or perform tests that could damage existing data.
+5. Do not expose secrets, API keys, tokens, passwords, personal data, or sensitive environment variables in the report.
+6. Do not claim that a file, feature, test, or workflow was checked unless you actually inspected or executed it.
+7. Never report a test as passed if it was not executed. Clearly distinguish between passed, failed, blocked, and not tested.
+8. Do not assume that a successful build means the application is bug-free.
+9. Preserve backward compatibility with existing user data. Treat data integrity as a critical requirement.
+10. If a check requires unavailable dependencies, credentials, external services, devices, or permissions, document the limitation instead of guessing.
+11. Do not stop after reviewing the main screens or a few important files. Inspect the entire relevant project, including source code, configuration, scripts, tests, database logic, and platform-specific code.
+12. Do not begin fixing any issue until I have reviewed the report and explicitly authorized a separate remediation phase.
+
+PHASE 1 — PROJECT DISCOVERY AND COMPLETE INVENTORY
+
+First, inspect the repository structure and identify:
+
+- All applications, packages, modules, and workspaces.
+- All source files and their responsibilities.
+- All pages, screens, components, forms, dialogs, menus, and navigation routes.
+- All hooks, utility functions, services, state-management logic, and business rules.
+- All database models, IndexedDB/Dexie tables, indexes, migrations, import/export logic, and persistence mechanisms.
+- All authentication, authorization, security-sensitive operations, and external integrations, if present.
+- All build configurations, TypeScript settings, linting rules, package scripts, and dependencies.
+- All test files, test fixtures, mocks, and CI/CD workflows.
+- All PWA, offline, Android/Capacitor, and Electron/Windows-related code, if present.
+- All TODO, FIXME, placeholder, mock, incomplete, duplicated, unreachable, and apparently unused code.
+
+Create a complete file inventory. Classify each file as inspected, partially inspected, generated, dependency/vendor code, or not inspected.
+
+Do not waste time auditing third-party library internals line by line. Instead, inspect their versions, configuration, usage, known integration risks, and relevant security advisories.
+
+If the repository is too large to inspect in one pass, work systematically in batches and maintain a checklist until every relevant first-party source file has been covered.
+
+PHASE 2 — LINE-BY-LINE SOURCE CODE REVIEW
+
+Review every relevant first-party source file line by line, not merely by searching for keywords.
+
+For each file, examine:
+
+- Syntax, types, logic, and control flow.
+- Incorrect assumptions and missing conditions.
+- Null, undefined, empty, malformed, and unexpected values.
+- Boundary conditions and numeric precision.
+- Incorrect state updates, stale closures, race conditions, and asynchronous errors.
+- Missing cleanup, memory leaks, and event-listener leaks.
+- Incorrect error handling and swallowed exceptions.
+- Duplicate logic and inconsistent business rules.
+- Dead code, unreachable branches, unused imports, and unfinished implementations.
+- Security vulnerabilities and unsafe data handling.
+- Accessibility and usability problems where applicable.
+- Compatibility with the project's actual runtime, framework, and dependency versions.
+
+For every confirmed issue, provide the exact file path, relevant line number or line range, evidence, impact, and recommended correction.
+
+Distinguish confirmed defects from potential risks and subjective improvement suggestions.
+
+PHASE 3 — TRADING JOURNAL BUSINESS LOGIC
+
+Audit the application's trading-domain logic carefully.
+
+Check the following wherever implemented:
+
+- Trade creation, editing, duplication, deletion, and archiving.
+- Open, closed, cancelled, invalidated, and other trade statuses.
+- Long and short positions.
+- Entry price, exit price, stop loss, take profit, position size, lot size, and risk/reward calculations.
+- Realized and unrealized P&L, fees, commissions, swaps, and other costs.
+- Win rate, loss rate, average win/loss, expectancy, profit factor, drawdown, and other performance metrics.
+- R-multiples, risk percentages, and account-balance calculations.
+- Currency handling, decimal precision, rounding, and invalid numeric inputs.
+- Date/time zones, daylight-saving changes, trading sessions, and date filters.
+- Partial entries, partial exits, multiple targets, and scaling in/out, if supported.
+- Multiple timeframes (MTF), scenarios, trade execution, psychology, tags, lessons, and journal notes.
+- Relationships between trading sessions, trades, screenshots, reviews, and analytics.
+- Filtering, sorting, pagination, searching, grouping, and dashboard calculations.
+- Consistency between trade details, dashboards, statistics, charts, and exported reports.
+
+Verify calculations against independently calculated test cases where possible.
+
+Do not assume any trading rule is implemented merely because a corresponding UI field exists.
+
+Identify whether any metric has ambiguous definitions or can produce misleading results.
+
+PHASE 4 — DATABASE, DATA INTEGRITY, AND MIGRATIONS
+
+Inspect all persistence and data-access code.
+
+Verify:
+
+- Whether records are reliably saved, updated, and deleted.
+- Whether asynchronous writes are awaited correctly.
+- Whether data can be lost when a screen closes, an operation fails, or the application restarts.
+- Whether database transactions are used appropriately.
+- Whether IDs, indexes, relations, and uniqueness constraints are correct.
+- Whether concurrent or repeated operations can create duplicates or inconsistent records.
+- Whether migrations preserve older user data.
+- Whether legacy records missing newer fields are handled safely.
+- Whether import/export preserves all supported fields and relationships.
+- Whether malformed imports are validated before modifying existing data.
+- Whether failed imports can leave partially modified data.
+- Whether backup and restore workflows are complete and reliable.
+- Whether data can be corrupted by schema changes, version upgrades, or application updates.
+
+Do not run destructive migration, import, deletion, or restoration tests against real user data.
+
+If safe testing is possible, use an isolated test database and synthetic data.
+
+PHASE 5 — OFFLINE-FIRST RELIABILITY
+
+TraderMind is intended to operate as an offline trading journal.
+
+Inspect:
+
+- Whether core features work without internet access.
+- Whether any core feature unexpectedly depends on a remote server or external API.
+- Whether fonts, icons, charts, assets, and other required resources are available offline.
+- Whether service workers, caching, and application updates are configured correctly, if applicable.
+- Whether data remains available after restarting the application.
+- Whether the app handles network failures gracefully.
+- Whether any cloud synchronization, telemetry, or remote requests exist, and whether they are necessary and appropriately disclosed.
+- Whether offline behavior differs between browser/PWA, Android, and Windows builds.
+
+Do not introduce cloud services or networking functionality.
+
+PHASE 6 — SECURITY AND PRIVACY AUDIT
+
+Review:
+
+- Unsafe HTML rendering and cross-site scripting risks.
+- Injection risks and unsafe parsing.
+- Sensitive information stored in source code or logs.
+- Unnecessary permissions and excessive data access.
+- Unsafe file import/export handling.
+- Path traversal and unsafe file operations.
+- Electron security settings, preload scripts, IPC validation, context isolation, and Node integration, if applicable.
+- Untrusted URL handling and external link behavior.
+- Dependency vulnerabilities and outdated packages.
+- Privacy implications of analytics, telemetry, and external requests.
+- Risks involving locally stored financial and trading journal data.
+
+Do not print secrets in your output. Report only their location and type, with sensitive values redacted.
+
+Do not claim that the application is secure merely because no obvious vulnerability was found.
+
+PHASE 7 — USER INTERFACE AND USER EXPERIENCE
+
+Inspect every implemented page and workflow, including:
+
+- Missing or broken navigation.
+- Buttons and controls that do nothing or perform the wrong action.
+- Forms with missing validation or incorrect default values.
+- Data that disappears when navigating between screens.
+- Inconsistent labels, statuses, date formats, and terminology.
+- Poor error, loading, empty, and success states.
+- Accessibility, keyboard navigation, focus management, and contrast.
+- Responsive layouts and mobile usability.
+- Long lists, large datasets, charts, and performance bottlenecks.
+- Duplicate fields and unnecessary repeated data entry.
+- Incorrectly synchronized fields between trade creation, execution, analysis, and review.
+- UI elements that look functional but are not connected to actual business logic.
+
+Report both functional defects and optional design improvements separately.
+
+PHASE 8 — PERFORMANCE AND RESOURCE USAGE
+
+Check:
+
+- Slow rendering and unnecessary component re-renders.
+- Expensive calculations and repeated database queries.
+- Large datasets and inefficient filtering.
+- Memory leaks and unnecessary event subscriptions.
+- Excessive bundle size and duplicate dependencies.
+- Startup time and navigation responsiveness.
+- Expensive chart rendering and image handling.
+- Performance differences between desktop and mobile devices.
+
+Use profiling or benchmarks only when available and safe. Clearly state when performance has not been measured.
+
+PHASE 9 — TESTING AND FAILURE SCENARIOS
+
+Inspect existing tests and run only safe, non-destructive checks that the current environment supports.
+
+Where feasible, run:
+
+- TypeScript type checking.
+- Linting and static analysis.
+- Unit tests.
+- Integration tests.
+- Production build.
+- Dependency and security checks using available tools.
+- Existing end-to-end tests.
+- Database and migration tests against isolated test data.
+
+Identify missing test coverage for important workflows.
+
+Create a recommended test matrix for:
+
+1. Creating, editing, and closing trades.
+2. Long and short positions.
+3. Invalid prices and numeric boundary values.
+4. Risk/reward and P&L calculations.
+5. Partial exits, if supported.
+6. Filtering and analytics.
+7. Reloading and restarting the application.
+8. Importing, exporting, backing up, and restoring data.
+9. Upgrading from older stored data.
+10. Offline operation.
+11. Small-screen and desktop layouts.
+12. Keyboard, form, navigation, and error handling.
+13. Large datasets and unusual user input.
+14. Windows, Android, and PWA behavior where applicable.
+
+For every test, record the exact command or procedure, actual result, and limitations.
+
+Do not modify source files just to make tests pass.
+
+PHASE 10 — PLATFORM AND RELEASE READINESS
+
+Inspect platform-specific code and configuration for each platform actually supported by the repository.
+
+For Windows/Electron, where applicable, review:
+
+- Main process, preload, renderer separation, and IPC.
+- Production asset paths and relative paths.
+- Build output and packaging configuration.
+- Installer configuration, icons, application metadata, and architecture.
+- Startup behavior and persistent storage paths.
+- Missing packaged assets or runtime dependencies.
+- Installer upgrades and preservation of user data.
+
+For Android/Capacitor, where applicable, review:
+
+- Web asset synchronization.
+- Android configuration and permissions.
+- Native plugin usage.
+- App startup, local storage, and offline behavior.
+- Build configuration and release readiness.
+
+For PWA, where applicable, review:
+
+- Manifest, icons, service worker, caching, installation, and update behavior.
+
+Do not claim a platform works unless its relevant build and runtime behavior have been verified.
+
+PHASE 11 — DEPENDENCIES AND MAINTAINABILITY
+
+Review:
+
+- Direct dependency versions and compatibility.
+- Deprecated or abandoned packages.
+- Known security advisories using available and trustworthy sources.
+- Dependency duplication and unnecessary packages.
+- TypeScript strictness and type safety.
+- Code duplication and architectural coupling.
+- Naming consistency and module boundaries.
+- Configuration inconsistencies between development and production.
+- CI/CD workflow reliability.
+- Missing automated checks and release safeguards.
+
+Do not upgrade dependencies during this audit.
+
+PHASE 12 — REQUIRED FINAL REPORT
+
+Produce a detailed report named:
+
+TRADERMIND_COMPREHENSIVE_AUDIT_REPORT.md
+
+If file creation is supported, save the report in the project workspace. Also provide the complete report in the conversation or clearly explain how I can retrieve it.
+
+The report must include:
+
+A. Executive Summary
+
+- Overall health assessment.
+- Whether the application is ready for normal use.
+- Whether it is ready for a production release.
+- The five most important findings.
+- Major limitations of this audit.
+
+B. Audit Coverage
+
+- Total relevant first-party source files identified.
+- Files fully inspected, partially inspected, and not inspected.
+- Modules and platforms examined.
+- Tests actually executed and tests not executed.
+- Areas that could not be verified.
+
+C. Findings Register
+
+For each issue, include:
+
+- Unique finding ID.
+- Severity: Critical, High, Medium, Low, or Informational.
+- Confidence: Confirmed, Probable, or Needs Verification.
+- Category.
+- Exact file path and line numbers.
+- Explanation of the defect or risk.
+- Evidence supporting the finding.
+- Conditions required to reproduce it.
+- User impact and data-loss risk.
+- Recommended remediation.
+- Suggested regression test.
+
+Do not invent line numbers or reproduction steps.
+
+D. Trading Calculation Verification
+
+Provide independently calculated examples for supported trading calculations, with inputs, expected outputs, actual outputs, and pass/fail status.
+
+E. Data Integrity Assessment
+
+Explain the risks involving persistence, migrations, backups, imports, exports, and backward compatibility.
+
+F. Security and Privacy Assessment
+
+Document confirmed vulnerabilities, potential risks, and unverified areas.
+
+G. Functional and UI Assessment
+
+Summarize defects by page, workflow, and component.
+
+H. Performance and Platform Assessment
+
+Separate measured results from code-review observations and untested assumptions.
+
+I. Test Results
+
+Provide the exact commands, results, failures, skipped checks, and explanations.
+
+J. Prioritized Remediation Roadmap
+
+Group findings into:
+
+- P0: Immediate critical risks.
+- P1: High-priority defects.
+- P2: Important improvements.
+- P3: Optional enhancements.
+
+For each task, identify dependencies, affected modules, regression risks, and recommended validation.
+
+K. Final Release Checklist
+
+Provide a checklist of conditions that should be met before considering the application production-ready.
+
+L. Final Verdict
+
+Choose one of:
+
+- NOT READY — critical or high-risk defects remain.
+- CONDITIONALLY READY — no identified blocker, but important checks remain.
+- READY FOR RELEASE — sufficient evidence supports release readiness within the tested scope.
+
+Explain the evidence behind the verdict. If coverage is incomplete, explicitly qualify the conclusion.
+
+EXECUTION ORDER
+
+1. Discover and inventory the project.
+2. Inspect all relevant source files systematically.
+3. Review the architecture, trading logic, persistence, security, UI, and platform code.
+4. Execute safe checks and tests.
+5. Cross-check findings against actual code and test results.
+6. Generate the comprehensive report.
+7. Present a concise summary and the full report location.
+
+Start by producing the project inventory and audit plan. Then continue through every phase until the audit is complete or a specific limitation prevents further progress.
+
+Remember: this is an audit, not a code modification task. Do not fix anything without my explicit approval.

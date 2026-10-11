@@ -6,14 +6,18 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
 
-const rawPort = process.env.PORT ?? '5173';
+const rawPort = process.env.PORT ?? '23583';
+
 const port = Number(rawPort);
 
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-const basePath = process.env.BASE_PATH ?? '/';
+const basePath =
+  process.env.TRADERMIND_NATIVE === '1'
+    ? './'
+    : (process.env.BASE_PATH ?? '/');
 
 export default defineConfig({
   base: basePath,
@@ -22,13 +26,15 @@ export default defineConfig({
     tailwindcss(),
     runtimeErrorOverlay(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // Wait for a clean navigation before activating a new chunk set. This
+      // avoids mixing a new index.html with old lazy chunks on mobile/PWA.
+      registerType: 'prompt',
       injectRegister: 'auto',
-      manifest: false,
+      manifest: false, // از public/manifest.json استفاده می‌شود
       workbox: {
         cleanupOutdatedCaches: true,
-        skipWaiting: true,
-        clientsClaim: true,
+        skipWaiting: false,
+        clientsClaim: false,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {

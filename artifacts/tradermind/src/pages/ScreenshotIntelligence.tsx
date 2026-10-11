@@ -15,11 +15,11 @@ import {
   BookOpen, Zap, AlertTriangle, CheckCircle2, TrendingUp, TrendingDown,
   Tag, Grid3x3, List, Filter, Save, FolderPlus, Brain, ArrowRight,
   Shield, History, Target, Sparkles, Info, Package, RotateCcw,
-  SlidersHorizontal, Calendar, Clock, Globe2, Users
+  SlidersHorizontal, Calendar, Clock, Globe2, Users, MonitorUp
 } from 'lucide-react';
 import { db, ChartScreenshot, ScreenshotCollection, VisualPattern, ScreenshotGroup, Trade } from '../db/database';
 import {
-  getAllChartScreenshots, saveChartScreenshot, updateChartScreenshot, deleteChartScreenshot,
+  getAllChartScreenshots, backfillScreenshotLibrary, saveChartScreenshot, updateChartScreenshot, deleteChartScreenshot,
   getAllCollections, saveCollection, updateCollection, deleteCollection, addToCollection, removeFromCollection,
   getAllPatterns, savePattern, updatePattern, deletePattern,
   getAllGroups, saveGroup, updateGroup, deleteGroup,
@@ -188,12 +188,13 @@ function GalleryTab({ allTrades, onRefresh }: { allTrades: Trade[]; onRefresh: (
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const qc = useQueryClient();
 
   const { data: screenshots = [] } = useQuery<ChartScreenshot[]>({
     queryKey: ['chart-screenshots'],
-    queryFn: getAllChartScreenshots,
+    queryFn: async () => { await backfillScreenshotLibrary(); return getAllChartScreenshots(); },
   });
 
   const { data: collections = [] } = useQuery<ScreenshotCollection[]>({
@@ -251,6 +252,36 @@ function GalleryTab({ allTrades, onRefresh }: { allTrades: Trade[]; onRefresh: (
     } finally { setIsProcessing(false); }
   }, [qc, onRefresh]);
 
+  const captureScreen = async () => {
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      toast.error('گرفتن تصویر از صفحه در این دستگاه پشتیبانی نمی‌شود؛ از آپلود یا دوربین استفاده کنید.');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.muted = true;
+      await video.play();
+      await new Promise<void>(resolve => {
+        if (video.readyState >= 2) resolve();
+        else video.addEventListener('loadeddata', () => resolve(), { once: true });
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+      canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height);
+      stream.getTracks().forEach(track => track.stop());
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
+      if (!blob) throw new Error('ساخت تصویر از صفحه ناموفق بود');
+      await handleFiles([new File([blob], `screen-${Date.now()}.png`, { type: 'image/png' })]);
+    } catch (error) {
+      if ((error as DOMException)?.name !== 'AbortError') {
+        toast.error('گرفتن تصویر از صفحه انجام نشد');
+      }
+    }
+  };
+
   const handleDelete = async (id: string) => {
     await deleteChartScreenshot(id);
     await qc.invalidateQueries({ queryKey: ['chart-screenshots', 'screenshot-collections'] });
@@ -269,6 +300,14 @@ function GalleryTab({ allTrades, onRefresh }: { allTrades: Trade[]; onRefresh: (
         </Button>
         <input ref={fileInputRef} type="file" accept="image/png,image/jpg,image/jpeg,image/webp" multiple className="hidden"
           onChange={e => { const f = Array.from(e.target.files ?? []); if (f.length) handleFiles(f); e.target.value = ''; }} />
+        <Button size="sm" variant="outline" className="gap-2" onClick={() => cameraInputRef.current?.click()} disabled={isProcessing}>
+          <Camera className="w-4 h-4" /> دوربین
+        </Button>
+        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden"
+          onChange={e => { const f = Array.from(e.target.files ?? []); if (f.length) handleFiles(f); e.target.value = ''; }} />
+        <Button size="sm" variant="outline" className="gap-2" onClick={() => void captureScreen()} disabled={isProcessing}>
+          <MonitorUp className="w-4 h-4" /> تصویر از صفحه
+        </Button>
         <Input placeholder="فیلتر نماد..." value={filterSymbol} onChange={e => setFilterSymbol(e.target.value)} className="w-32 h-8 text-sm" />
         <Select value={filterType} onValueChange={v => setFilterType(v as any)}>
           <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder="نوع" /></SelectTrigger>
@@ -743,7 +782,7 @@ function GroupsTab() {
 
   const { data: allChartSS = [] } = useQuery<ChartScreenshot[]>({
     queryKey: ['chart-screenshots'],
-    queryFn: getAllChartScreenshots,
+    queryFn: async () => { await backfillScreenshotLibrary(); return getAllChartScreenshots(); },
   });
 
   const createGroup = async () => {
@@ -898,7 +937,7 @@ function PatternsTab({ allTrades }: { allTrades: Trade[] }) {
   });
   const { data: allChartSS = [] } = useQuery<ChartScreenshot[]>({
     queryKey: ['chart-screenshots'],
-    queryFn: getAllChartScreenshots,
+    queryFn: async () => { await backfillScreenshotLibrary(); return getAllChartScreenshots(); },
   });
 
   const createPattern = async () => {
@@ -1100,7 +1139,7 @@ function CollectionsTab() {
   });
   const { data: allChartSS = [] } = useQuery<ChartScreenshot[]>({
     queryKey: ['chart-screenshots'],
-    queryFn: getAllChartScreenshots,
+    queryFn: async () => { await backfillScreenshotLibrary(); return getAllChartScreenshots(); },
   });
 
   const createCollection = async () => {

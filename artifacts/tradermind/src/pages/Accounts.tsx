@@ -9,7 +9,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Card, CardContent } from '../components/ui/card';
-import { Plus, Pencil, Trash2, Wallet, Star } from 'lucide-react';
+import { Plus, Pencil, Trash2, Wallet, Star, Archive, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'CHF', 'IRR', 'USDT'];
@@ -23,13 +23,13 @@ const emptyForm = {
   currentBalance: '',
   color: '#3b82f6',
   isDefault: false,
+  tradingBoxIds: [] as string[],
   notes: '',
-  boxIds: [] as string[],
 };
 
 export default function Accounts() {
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [boxes, setBoxes] = useState<TradingBox[]>([]);
+  const [tradingBoxes, setTradingBoxes] = useState<TradingBox[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -37,15 +37,12 @@ export default function Accounts() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const load = async () => {
-    const [nextAccounts, nextBoxes] = await Promise.all([
-      accountService.getAll(),
-      tradingBoxService.getAll(),
-    ]);
-    setAccounts(nextAccounts);
-    setBoxes(nextBoxes);
+    const [accountRows, boxRows] = await Promise.all([accountService.getAll(), tradingBoxService.getAll()]);
+    setAccounts(accountRows);
+    setTradingBoxes(boxRows);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { void load(); }, []);
 
   const openNew = () => {
     setEditingId(null);
@@ -62,9 +59,9 @@ export default function Accounts() {
       initialBalance: acc.initialBalance?.toString() ?? '',
       currentBalance: acc.currentBalance?.toString() ?? '',
       color: acc.color,
-      isDefault: acc.isDefault,
+      isDefault: acc.isArchived ? false : acc.isDefault,
+      tradingBoxIds: acc.tradingBoxIds ?? tradingBoxes.filter(box => box.accountId === acc.id).map(box => box.id),
       notes: acc.notes ?? '',
-      boxIds: boxes.filter(box => box.accountId === acc.id).map(box => box.id),
     });
     setDialogOpen(true);
   };
@@ -83,27 +80,16 @@ export default function Accounts() {
       currentBalance: form.currentBalance ? parseFloat(form.currentBalance) : null,
       color: form.color,
       isDefault: form.isDefault,
+      tradingBoxIds: form.tradingBoxIds.filter(id => tradingBoxes.some(box => box.id === id)),
       notes: form.notes.trim() || null,
     };
     try {
-      let savedAccountId = editingId;
       if (editingId) {
         await accountService.update(editingId, data);
         toast.success('حساب به‌روز شد');
       } else {
-        const created = await accountService.create(data);
-        savedAccountId = created.id;
+        await accountService.create(data);
         toast.success('حساب جدید اضافه شد');
-      }
-      if (savedAccountId) {
-        const affectedBoxes = boxes.filter(box =>
-          box.accountId === savedAccountId || form.boxIds.includes(box.id)
-        );
-        await Promise.all(affectedBoxes.map(box =>
-          tradingBoxService.update(box.id, {
-            accountId: form.boxIds.includes(box.id) ? savedAccountId : null,
-          })
-        ));
       }
       await load();
       setDialogOpen(false);
@@ -113,15 +99,16 @@ export default function Accounts() {
   };
 
   const handleDelete = async (id: string) => {
-    await Promise.all(
-      boxes.filter(box => box.accountId === id).map(box =>
-        tradingBoxService.update(box.id, { accountId: null })
-      )
-    );
     await accountService.delete(id);
-    toast.success('حساب حذف شد');
+    toast.success('حساب بایگانی شد؛ معاملات و سشن‌های مرتبط حفظ شدند.');
     await load();
     setDeleteConfirm(null);
+  };
+
+  const handleRestore = async (id: string) => {
+    await accountService.setArchived(id, false);
+    toast.success('حساب دوباره فعال شد.');
+    await load();
   };
 
   return (
@@ -129,7 +116,7 @@ export default function Accounts() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">حساب‌های معاملاتی</h1>
-          <p className="text-sm text-muted-foreground mt-1">معاملات هر حساب را جداگانه ثبت و تحلیل کنید</p>
+          <p className="text-sm text-muted-foreground mt-1">معاملات هر حساب را جداگانه ثبت و تحلیل کنید؛ حساب‌های قدیمی را بایگانی کنید تا سابقه باقی بماند.</p>
         </div>
         <Button onClick={openNew} className="gap-2">
           <Plus className="w-4 h-4" /> حساب جدید
@@ -159,6 +146,7 @@ export default function Accounts() {
                       <div className="font-semibold whitespace-normal break-words leading-6 flex items-center gap-1.5">
                         {acc.name}
                         {acc.isDefault && <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />}
+                        {acc.isArchived && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">بایگانی</span>}
                       </div>
                       {acc.broker && <div className="text-xs text-muted-foreground whitespace-normal break-words leading-5">{acc.broker}</div>}
                     </div>
@@ -167,21 +155,16 @@ export default function Accounts() {
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(acc)}>
                       <Pencil className="w-3.5 h-3.5" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setDeleteConfirm(acc.id)}>
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
+                    {acc.isArchived ? (
+                      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="بازیابی حساب" title="بازیابی حساب" onClick={() => void handleRestore(acc.id)}>
+                        <RotateCcw className="w-3.5 h-3.5" />
+                      </Button>
+                    ) : (
+                      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="بایگانی حساب" title="بایگانی حساب" onClick={() => setDeleteConfirm(acc.id)}>
+                        <Archive className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
                   </div>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {boxes.filter(box => box.accountId === acc.id).map(box => (
-                    <span key={box.id} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
-                      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: box.color }} />
-                      {box.name}
-                    </span>
-                  ))}
-                  {boxes.every(box => box.accountId !== acc.id) && (
-                    <span className="text-xs text-muted-foreground">باکسی متصل نشده</span>
-                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div>
@@ -241,6 +224,33 @@ export default function Accounts() {
                 </div>
               </div>
             </div>
+            <div className="space-y-2">
+              <Label>باکس‌های مجاز این حساب</Label>
+              {tradingBoxes.length === 0 ? (
+                <p className="text-xs text-muted-foreground">هنوز باکسی نساخته‌اید؛ می‌توانید بعداً از بخش باکس‌های معاملاتی اضافه کنید.</p>
+              ) : (
+                <div className="max-h-36 space-y-1 overflow-y-auto rounded-md border p-2">
+                  {tradingBoxes.map(box => (
+                    <label key={box.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted/50">
+                      <input
+                        type="checkbox"
+                        checked={form.tradingBoxIds.includes(box.id)}
+                        onChange={event => setForm(current => ({
+                          ...current,
+                          tradingBoxIds: event.target.checked
+                            ? [...new Set([...current.tradingBoxIds, box.id])]
+                            : current.tradingBoxIds.filter(id => id !== box.id),
+                        }))}
+                      />
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: box.color }} />
+                      <span className="min-w-0 flex-1 truncate">{box.name}</span>
+                      {box.accountId && box.accountId !== editingId && <span className="text-[10px] text-muted-foreground">حساب دیگر</span>}
+                    </label>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">یک یا چند باکس را انتخاب کنید. تغییر این فهرست فقط انتخاب‌های آینده را محدود می‌کند و معاملات قبلی را تغییر نمی‌دهد.</p>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>موجودی اولیه</Label>
@@ -255,39 +265,6 @@ export default function Accounts() {
               <Label>یادداشت</Label>
               <Textarea placeholder="توضیحات اضافی…" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} className="min-h-[70px]" />
             </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>باکس‌های این حساب</Label>
-                <span className="text-xs text-muted-foreground">چند انتخابی</span>
-              </div>
-              {boxes.length === 0 ? (
-                <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-                  هنوز باکسی ساخته نشده؛ بعداً هم می‌توانید از صفحهٔ باکس‌ها آن را به این حساب متصل کنید.
-                </p>
-              ) : (
-                <div className="max-h-36 space-y-1 overflow-y-auto rounded-lg border p-2">
-                  {boxes.map(box => (
-                    <label key={box.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50">
-                      <input
-                        type="checkbox"
-                        checked={form.boxIds.includes(box.id)}
-                        onChange={event => setForm(current => ({
-                          ...current,
-                          boxIds: event.target.checked
-                            ? [...current.boxIds, box.id]
-                            : current.boxIds.filter(id => id !== box.id),
-                        }))}
-                      />
-                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: box.color }} />
-                      <span className="truncate">{box.name}</span>
-                      {box.accountId && box.accountId !== editingId && (
-                        <span className="mr-auto text-[10px] text-amber-500">متصل به حساب دیگر</span>
-                      )}
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
             <label className="flex items-center gap-2 cursor-pointer select-none">
               <input type="checkbox" className="rounded" checked={form.isDefault} onChange={e => setForm(f => ({ ...f, isDefault: e.target.checked }))} />
               <span className="text-sm">حساب پیش‌فرض</span>
@@ -300,16 +277,16 @@ export default function Accounts() {
         </DialogContent>
       </Dialog>
 
-      {/* Confirm delete */}
+      {/* Confirm archive */}
       <Dialog open={!!deleteConfirm} onOpenChange={v => !v && setDeleteConfirm(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>حذف حساب</DialogTitle>
+            <DialogTitle>بایگانی حساب</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">آیا مطمئنید؟ معاملات مرتبط تغییری نمی‌کنند ولی حساب پاک می‌شود.</p>
+          <p className="text-sm text-muted-foreground">حساب از انتخاب‌های جدید پنهان می‌شود؛ معاملات و سشن‌های قبلی بدون تغییر باقی می‌مانند. هر زمان خواستید می‌توانید آن را بازیابی کنید.</p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteConfirm(null)}>لغو</Button>
-            <Button variant="destructive" onClick={() => deleteConfirm && handleDelete(deleteConfirm)}>حذف</Button>
+            <Button variant="destructive" onClick={() => deleteConfirm && handleDelete(deleteConfirm)}>بایگانی</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

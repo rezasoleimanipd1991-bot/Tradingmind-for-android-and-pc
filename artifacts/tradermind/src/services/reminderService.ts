@@ -11,8 +11,10 @@ export interface Reminder {
 }
 
 const STORAGE_KEY = 'tradermind-reminders';
+const CUSTOM_SOUND_KEY = 'tradermind-reminder-custom-sound';
 const CHANNEL_ID = 'tradermind-reminders';
 const browserTimers = new Map<string, ReturnType<typeof setTimeout>>();
+let lifecycleBound = false;
 
 function read(): Reminder[] {
   try {
@@ -56,31 +58,67 @@ async function showBrowserNotification(reminder: Reminder): Promise<void> {
     }
     if (Notification.permission !== 'granted') return;
 
-    // بعضی نسخه‌های Chrome روی Android و محیط‌های embedded سازنده‌ی
-    // Notification را ندارند و `new Notification()` خطای Illegal constructor
-    // می‌دهد. Service Worker روش استاندارد و سازگار برای اعلان وب موبایل است.
+    let delivered = false;
     if ('serviceWorker' in navigator) {
-      const registration = await navigator.serviceWorker.ready;
-      if (typeof registration.showNotification === 'function') {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration && typeof registration.showNotification === 'function') {
         await registration.showNotification(reminder.title, {
           body: reminder.body || 'یادآور TraderMind',
           tag: `tradermind-reminder-${reminder.id}`,
           dir: 'rtl',
           lang: 'fa',
         });
+        delivered = true;
       }
-      return;
     }
+    // Some desktop browsers have no active service worker; use their
+    // foreground Notification constructor as a fallback.
+    if (!delivered) new Notification(reminder.title, { body: reminder.body || 'یادآور TraderMind', tag: `tradermind-reminder-${reminder.id}` });
   } catch (error) {
     // شکست اعلان نباید رابط کاربری یا زمان‌بندی‌های دیگر را از کار بیندازد.
     console.warn('[TraderMind reminders] Browser notification unavailable', error);
   }
 }
 
+export function getReminderCustomSound(): string | null {
+  try { return localStorage.getItem(CUSTOM_SOUND_KEY); } catch { return null; }
+}
+
+export function setReminderCustomSound(dataUrl: string | null): void {
+  if (!dataUrl) {
+    localStorage.removeItem(CUSTOM_SOUND_KEY);
+    return;
+  }
+  if (!dataUrl.startsWith('data:audio/') || dataUrl.length > 2_000_000) {
+    throw new Error('فایل صوتی باید معتبر و کوچک‌تر از حدود ۱٫۵ مگابایت باشد.');
+  }
+  localStorage.setItem(CUSTOM_SOUND_KEY, dataUrl);
+}
+
+export async function previewReminderCustomSound(): Promise<void> {
+  const dataUrl = getReminderCustomSound();
+  if (!dataUrl) throw new Error('هنوز صدای سفارشی انتخاب نشده است.');
+  const audio = new Audio(dataUrl);
+  await audio.play();
+}
+
+async function playCustomSoundWhileAppIsOpen(): Promise<void> {
+  const dataUrl = getReminderCustomSound();
+  if (!dataUrl) return;
+  try { await new Audio(dataUrl).play(); }
+  catch (error) {
+    console.warn('[TraderMind reminders] Custom sound could not be played in this browser state', error);
+  }
+}
+
 function scheduleBrowserTimer(reminder: Reminder): void {
   const remaining = reminder.scheduledAt - Date.now();
   if (remaining <= 0) {
-    void showBrowserNotification(reminder);
+    void (async () => {
+      await playCustomSoundWhileAppIsOpen();
+      await showBrowserNotification(reminder);
+      write(read().map(item => item.id === reminder.id ? { ...item, enabled: false } : item));
+    })();
     browserTimers.delete(reminder.id);
     return;
   }
@@ -96,27 +134,37 @@ export async function scheduleReminder(reminder: Reminder): Promise<boolean> {
 
   if (Capacitor.isNativePlatform()) {
     if (!(await ensureNativePermission())) return false;
-    await LocalNotifications.schedule({
-      notifications: [{
-        id: notificationId(reminder.id),
-        title: reminder.title,
-        body: reminder.body || 'یادآور TraderMind',
-        schedule: { at: new Date(reminder.scheduledAt), allowWhileIdle: true },
-        sound: 'default',
-        channelId: CHANNEL_ID,
-        extra: { reminderId: reminder.id },
-      }],
-    });
-    return true;
+    try {
+      await LocalNotifications.schedule({
+        notifications: [{
+          id: notificationId(reminder.id),
+          title: reminder.title,
+          body: reminder.body || 'یادآور TraderMind',
+          schedule: { at: new Date(reminder.scheduledAt), allowWhileIdle: true },
+          sound: 'default',
+          channelId: CHANNEL_ID,
+          extra: { reminderId: reminder.id },
+        }],
+      });
+      return true;
+    } catch (error) {
+      console.warn('[TraderMind reminders] Native scheduling failed', error);
+      return false;
+    }
   }
 
   if (window.electronAPI?.scheduleReminder) {
-    return window.electronAPI.scheduleReminder({
-      id: reminder.id,
-      title: reminder.title,
-      body: reminder.body,
-      scheduledAt: reminder.scheduledAt,
-    });
+    try {
+      return await window.electronAPI.scheduleReminder({
+        id: reminder.id,
+        title: reminder.title,
+        body: reminder.body,
+        scheduledAt: reminder.scheduledAt,
+      });
+    } catch (error) {
+      console.warn('[TraderMind reminders] Electron scheduling failed', error);
+      return false;
+    }
   }
 
   scheduleBrowserTimer(reminder);
@@ -170,9 +218,50 @@ export const reminderService = {
     const scheduled = await scheduleReminder({ ...reminder, enabled: true });
     write(reminders.map(item => item.id === id ? { ...item, enabled: scheduled } : item));
   },
-  async initialize(): Promise<void> {
-    for (const reminder of read()) {
-      if (reminder.enabled && reminder.scheduledAt > Date.now()) await scheduleReminder(reminder);
+  async getPermissionStatus(): Promise<'granted' | 'default' | 'denied' | 'unsupported'> {
+    if (Capacitor.isNativePlatform()) {
+      const permission = await LocalNotifications.checkPermissions().catch(() => ({ display: 'denied' as const }));
+      return permission.display === 'granted' ? 'granted' : permission.display === 'prompt' ? 'default' : 'denied';
     }
+    if (!('Notification' in window)) return 'unsupported';
+    return Notification.permission;
+  },
+  async requestPermission(): Promise<boolean> {
+    if (Capacitor.isNativePlatform()) return ensureNativePermission();
+    if (!('Notification' in window)) return false;
+    if (Notification.permission === 'granted') return true;
+    return (await Notification.requestPermission()) === 'granted';
+  },
+  async initialize(): Promise<void> {
+    if (!lifecycleBound && typeof window !== 'undefined') {
+      const refresh = () => {
+        if (document.visibilityState === 'visible') void reminderService.initialize();
+      };
+      window.addEventListener('focus', refresh);
+      document.addEventListener('visibilitychange', refresh);
+      lifecycleBound = true;
+    }
+    const reminders = read();
+    let changed = false;
+    for (const reminder of reminders) {
+      if (reminder.enabled && reminder.scheduledAt <= Date.now()) {
+        // Browser timers do not survive a closed tab. Surface an overdue
+        // reminder once when the app returns; native/Electron runtimes have
+        // their own OS scheduler and should not receive a duplicate.
+        if (!Capacitor.isNativePlatform() && !window.electronAPI?.scheduleReminder) {
+          await playCustomSoundWhileAppIsOpen();
+          await showBrowserNotification(reminder);
+        }
+        reminder.enabled = false;
+        changed = true;
+      } else if (reminder.enabled) {
+        const scheduled = await scheduleReminder(reminder);
+        if (!scheduled) {
+          reminder.enabled = false;
+          changed = true;
+        }
+      }
+    }
+    if (changed) write(reminders);
   },
 };

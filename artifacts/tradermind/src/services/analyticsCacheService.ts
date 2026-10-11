@@ -7,7 +7,7 @@
 
 import { Trade, DailyJournal, Strategy } from '../db/database';
 import { getAllTradesForAnalytics } from '../core/repositories/tradeRepository';
-import { isWin, isLoss, isClosed } from '../lib/tradeHelpers';
+import { isWin, isLoss, isClosed, getNetPnl } from '../lib/tradeHelpers';
 import { getTradingDateKey } from '../lib/tradingTime';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -90,7 +90,7 @@ async function computeAnalyticsCache(): Promise<CachedAnalytics> {
   const avgLossR = lossRs.length ? lossRs.reduce((s, v) => s + v, 0) / lossRs.length : null;
   const expectancy = winRate !== null && lossRate !== null && avgWinR !== null && avgLossR !== null
     ? winRate * avgWinR + lossRate * avgLossR : null;
-  const totalPnl = closed.reduce((s, t) => s + (t.profitLoss ?? 0), 0);
+  const totalPnl = closed.reduce((s, t) => s + (getNetPnl(t) ?? 0), 0);
 
   // Daily stats
   const byDay = new Map<string, { trades: Trade[] }>();
@@ -108,7 +108,7 @@ async function computeAnalyticsCache(): Promise<CachedAnalytics> {
       wins: dWins.length,
       losses: dt.filter(isLoss).length,
       winRate: dt.length > 0 ? dWins.length / dt.length : null,
-      totalPnl: dt.reduce((s, t) => s + (t.profitLoss ?? 0), 0),
+      totalPnl: dt.reduce((s, t) => s + (getNetPnl(t) ?? 0), 0),
       totalR: dRs.length ? dRs.reduce((s, v) => s + v, 0) : null,
     };
   }).sort((a, b) => a.date.localeCompare(b.date));
@@ -127,7 +127,7 @@ async function computeAnalyticsCache(): Promise<CachedAnalytics> {
       trades: st.length,
       wins: sWins.length,
       winRate: st.length > 0 ? sWins.length / st.length : null,
-      totalPnl: st.reduce((s, t) => s + (t.profitLoss ?? 0), 0),
+      totalPnl: st.reduce((s, t) => s + (getNetPnl(t) ?? 0), 0),
       avgR: sRs.length ? sRs.reduce((s, v) => s + v, 0) / sRs.length : null,
     };
   }).sort((a, b) => b.trades - a.trades);
@@ -146,7 +146,7 @@ async function computeAnalyticsCache(): Promise<CachedAnalytics> {
       trades: st.length,
       wins: sWins.length,
       winRate: st.length > 0 ? sWins.length / st.length : null,
-      totalPnl: st.reduce((s, t) => s + (t.profitLoss ?? 0), 0),
+      totalPnl: st.reduce((s, t) => s + (getNetPnl(t) ?? 0), 0),
     };
   });
 

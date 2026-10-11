@@ -8,8 +8,8 @@ import { AlertTriangle, LogOut, Save, Trash2 } from 'lucide-react';
 
 export interface NavigationGuardRegistration {
   isDirty: boolean;
-  onSave?: () => Promise<void>;
-  onDiscard?: () => void;
+  onSave?: () => void | boolean | Promise<void | boolean>;
+  onDiscard?: () => void | boolean | Promise<void | boolean>;
 }
 
 interface NavigationGuardContextValue {
@@ -238,8 +238,14 @@ export function NavigationGuardProvider({ children }: { children: React.ReactNod
     const guard = guardRef.current;
     setBusy(true);
     try {
-      if (choice === 'save') await guard?.onSave?.();
-      else guard?.onDiscard?.();
+      const result = choice === 'save'
+        ? await guard?.onSave?.()
+        : await guard?.onDiscard?.();
+      if (result === false) {
+        pendingRef.current = null;
+        setDialog(null);
+        return;
+      }
       pendingRef.current = null;
       setDialog(null);
       if (action?.type === 'back' && isDashboard(currentLocationRef.current)) {

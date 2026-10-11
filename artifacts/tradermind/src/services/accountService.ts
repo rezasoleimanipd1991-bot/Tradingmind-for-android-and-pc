@@ -9,6 +9,10 @@ export const accountService = {
     return db.accounts.orderBy('createdAt').toArray();
   },
 
+  async getActive(): Promise<Account[]> {
+    return db.accounts.filter(account => !account.isArchived).sortBy('createdAt');
+  },
+
   async getById(id: string): Promise<Account | undefined> {
     return db.accounts.get(id);
   },
@@ -30,11 +34,19 @@ export const accountService = {
   },
 
   async delete(id: string): Promise<void> {
-    await db.accounts.delete(id);
+    await this.setArchived(id, true);
+  },
+
+  async setArchived(id: string, isArchived: boolean): Promise<void> {
+    await db.accounts.update(id, {
+      isArchived,
+      ...(isArchived ? { isDefault: false } : {}),
+      updatedAt: Date.now(),
+    });
   },
 
   async ensureDefault(): Promise<Account> {
-    const existing = await db.accounts.orderBy('createdAt').first();
+    const existing = await db.accounts.filter(account => !account.isArchived).first();
     if (existing) return existing;
     return this.create({
       name: 'حساب اصلی',
@@ -44,6 +56,7 @@ export const accountService = {
       currentBalance: null,
       color: '#3b82f6',
       isDefault: true,
+      tradingBoxIds: [],
       notes: null,
     });
   },

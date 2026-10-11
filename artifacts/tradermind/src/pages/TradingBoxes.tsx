@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { tradingBoxService } from '../services/tradingBoxService';
 import { accountService } from '../services/accountService';
-import { TradingBox, Account } from '../db/database';
+import { TradingBox, db } from '../db/database';
+import type { Account } from '../db/database';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -38,12 +39,8 @@ export default function TradingBoxes() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const load = async () => {
-    const [all, allAccounts] = await Promise.all([
-      tradingBoxService.getAll(),
-      accountService.getAll(),
-    ]);
+    const all = await tradingBoxService.getAll();
     setBoxes(all);
-    setAccounts(allAccounts);
     const counts: Record<string, number> = {};
     await Promise.all(
       all.map(async b => {
@@ -53,7 +50,10 @@ export default function TradingBoxes() {
     setTradeCounts(counts);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    accountService.getAll().then(setAccounts);
+  }, []);
 
   const openNew = () => {
     setEditingId(null);
@@ -65,7 +65,7 @@ export default function TradingBoxes() {
     setEditingId(box.id);
     setForm({
       name: box.name,
-      accountId: box.accountId || 'none',
+      accountId: box.accountId ?? 'none',
       description: box.description ?? '',
       targetTradeCount: box.targetTradeCount?.toString() ?? '',
       color: box.color,
@@ -159,8 +159,13 @@ export default function TradingBoxes() {
                     <div className="flex items-center gap-2 min-w-0">
                       <Box className="w-5 h-5 shrink-0" style={{ color: box.color }} />
                       <div className="min-w-0">
-                        <div className="font-semibold truncate">{box.name}</div>
+                         <div className="font-semibold truncate">{box.name}</div>
                         {box.description && <div className="text-xs text-muted-foreground truncate">{box.description}</div>}
+                         {box.accountId && (
+                           <div className="text-[11px] text-primary/80 truncate">
+                             حساب: {accounts.find(account => account.id === box.accountId)?.name ?? 'حساب حذف‌شده'}
+                           </div>
+                         )}
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
@@ -219,25 +224,19 @@ export default function TradingBoxes() {
               <Input placeholder="مثلاً باکس ۱ — آزمون استراتژی FVG" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
             </div>
             <div className="space-y-2">
-              <Label>حساب مرتبط</Label>
-              <Select value={form.accountId} onValueChange={v => setForm(f => ({ ...f, accountId: v }))}>
-                <SelectTrigger><SelectValue placeholder="بدون حساب" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">بدون حساب</SelectItem>
-                  {accounts.map(account => (
-                    <SelectItem key={account.id} value={account.id}>
-                      {account.name}{account.broker ? ` — ${account.broker}` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {accounts.length === 0 && (
-                <p className="text-xs text-muted-foreground">برای اتصال، ابتدا یک حساب معاملاتی بسازید.</p>
-              )}
-            </div>
-            <div className="space-y-2">
               <Label>توضیح</Label>
               <Textarea placeholder="هدف از این باکس چیست؟" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="min-h-[70px]" />
+            </div>
+            <div className="space-y-2">
+              <Label>حساب اختصاصی</Label>
+              <Select value={form.accountId} onValueChange={v => setForm(f => ({ ...f, accountId: v }))}>
+                <SelectTrigger><SelectValue placeholder="مشترک بین حساب‌ها" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">مشترک بین حساب‌ها</SelectItem>
+                  {accounts.map(account => <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">باکس مشترک در معامله‌های همهٔ حساب‌ها قابل انتخاب است.</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">

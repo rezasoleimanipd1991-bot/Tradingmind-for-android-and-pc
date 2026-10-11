@@ -1,24 +1,40 @@
 import { db, Trade, defaultPostTradeReview } from '../db/database';
-import { isWin, isClosed } from '../lib/tradeHelpers';
+import { isWin, isClosed, getNetPnl } from '../lib/tradeHelpers';
 import { strategyService } from './strategyService';
 import { analysisService } from './analysisService';
 import { tradeVersionService, tradeEventService } from './tradeEventService';
-import { detectTradingSession, getTradeNetPnl } from '../lib/tradeClassification';
+import { detectTradingSession } from '../lib/tradeClassification';
+import { isTradingBoxAvailableForAccount } from './tradingBoxService';
 
 const defaultReview = JSON.stringify({ didWell: '', didWrong: '', learned: '', wouldTakeAgain: null, validSetup: null });
 const defaultPostTradeReviewStr = JSON.stringify(defaultPostTradeReview);
 
+/**
+ * IndexedDB updates for the same trade are serialized here instead of relying
+ * on whichever renderer event happens to reach Dexie first.  The queue only
+ * coordinates updates; it never turns an update into a create.
+ */
+const tradeUpdateQueues = new Map<string, Promise<void>>();
+
+async function serializeTradeUpdate<T>(tradeId: string, operation: () => Promise<T>): Promise<T> {
+  const previous = tradeUpdateQueues.get(tradeId) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>(resolve => { release = resolve; });
+  const tail = previous.then(() => current);
+  tradeUpdateQueues.set(tradeId, tail);
+
+  try {
+    await previous;
+    return await operation();
+  } finally {
+    release();
+    if (tradeUpdateQueues.get(tradeId) === tail) tradeUpdateQueues.delete(tradeId);
+  }
+}
+
 export const tradeService = {
   async getAllTrades() {
     return db.trades.orderBy('openedAt').reverse().toArray();
-  },
-
-  async getTradesByDateRange(from: number, to: number) {
-    return db.trades
-      .where('openedAt')
-      .between(from, to, true, true)
-      .reverse()
-      .toArray();
   },
 
   async getTradeById(id: string) {
@@ -32,6 +48,19 @@ export const tradeService = {
   async createTrade(data: Partial<Trade> = {}): Promise<Trade> {
     const id = crypto.randomUUID();
     const now = Date.now();
+    const linkedJournalSession = data.journalSessionId
+      ? await db.journalSessions.get(data.journalSessionId)
+      : undefined;
+    if (data.journalSessionId && !linkedJournalSession) {
+      throw new Error('سشن ژورنال برای اتصال معامله پیدا نشد.');
+    }
+    let sessionSymbol: string | undefined;
+    if (linkedJournalSession) {
+      try {
+        const symbols = JSON.parse(linkedJournalSession.symbols) as unknown;
+        sessionSymbol = Array.isArray(symbols) ? symbols.find((value): value is string => typeof value === 'string') : undefined;
+      } catch { /* a malformed optional symbol list must not block trade creation */ }
+    }
     // تنظیمات پیش‌فرض از localStorage خوانده می‌شوند تا سرویس دیتابیس
     // به React وابسته نباشد و در Electron/Capacitor هم یکسان کار کند.
     let defaults: Partial<Trade> = {};
@@ -51,15 +80,17 @@ export const tradeService = {
       defaults.accountId ? db.accounts.get(defaults.accountId) : Promise.resolve(undefined),
       defaults.boxId ? db.tradingBoxes.get(defaults.boxId) : Promise.resolve(undefined),
     ]);
-    defaults.accountId = defaultAccount?.id ?? null;
-    defaults.boxId = defaultBox?.id ?? null;
+    defaults.accountId = linkedJournalSession?.accountId ?? (defaultAccount && !defaultAccount.isArchived ? defaultAccount.id : null);
+    defaults.boxId = linkedJournalSession?.tradingBoxId
+      ?? (defaultBox && isTradingBoxAvailableForAccount(defaultBox, defaultAccount) ? defaultBox.id : null);
+    defaults.strategyId = linkedJournalSession?.strategyId ?? null;
+    if (sessionSymbol) defaults.symbol = sessionSymbol;
 
     const trade: Trade = {
-      sessionId: null, strategyId: null, symbol: '', market: null,
+      sessionId: null, market: null,
       direction: 'long', entryPrice: 0, exitPrice: null, stopLoss: 0,
       takeProfit: null, positionSize: null, riskPercentage: null, riskAmount: null,
-       rMultiple: null, result: 'open', profitLoss: null, fees: null, commission: null, spread: null,
-       ticketNumber: null, status: 'open',
+      rMultiple: null, result: 'open', profitLoss: null, fees: null, commission: null, spread: null, status: 'open',
       openedAt: now, closedAt: null, reasonForExit: null,
       emotions: '[]', emotionNotes: null, notes: null,
       screenshots: '[]', adherenceScore: null, adherenceRating: null,
@@ -71,12 +102,15 @@ export const tradeService = {
       entryReason: null, lesson: null,
       slMoved: null, tpMoved: null, partialClose: null, addedToPosition: null,
       reducedPosition: null, manualExit: null, managementReason: null,
-      mtfAnalysis: null,
+       mtfAnalysis: null, preTradeBriefing: null,
       ...defaults,
       ...data,
       id,
-      accountId: data.accountId ?? defaults.accountId ?? null,
-      boxId: data.boxId ?? defaults.boxId ?? null,
+      journalSessionId: linkedJournalSession?.id ?? data.journalSessionId ?? null,
+      accountId: linkedJournalSession?.accountId ?? data.accountId ?? defaults.accountId ?? null,
+      boxId: linkedJournalSession?.tradingBoxId ?? data.boxId ?? defaults.boxId ?? null,
+      strategyId: linkedJournalSession?.strategyId ?? data.strategyId ?? null,
+      symbol: data.symbol || defaults.symbol || '',
       tradingSession: data.tradingSession ?? detectTradingSession(data.openedAt ?? now),
     };
 
@@ -113,40 +147,61 @@ export const tradeService = {
    * PART 1-2: بروزرسانی معامله + ثبت نسخه در یک transaction واحد (Atomic)
    */
   async updateTrade(id: string, data: Partial<Trade>) {
-    const existing = await db.trades.get(id);
-    if (!existing) {
-      throw new Error(`معامله با شناسهٔ ${id} پیدا نشد و به‌روزرسانی انجام نشد.`);
+    const tradeId = typeof id === 'string' ? id.trim() : '';
+    if (!tradeId) {
+      throw new Error('UPDATE requires an existing trade ID');
     }
 
-    await db.transaction('rw', [db.trades, db.tradeVersions, db.tradeEvents], async () => {
-      // بروزرسانی معامله
-      await db.trades.update(id, data);
-
-      // ثبت نسخه در صورت تغییر فیلدهای مهم
-      await tradeVersionService.recordVersion(existing, data);
-
-      // اگر معامله بسته شد، رویداد exit اضافه کن
-      if (data.status === 'closed' && data.exitPrice != null && data.closedAt != null) {
-        const hasExitEvent = await db.tradeEvents
-          .where('tradeId').equals(id)
-          .filter(e => e.eventType === 'exit')
-          .count();
-        if (hasExitEvent === 0) {
-          await db.tradeEvents.add({
-            id: crypto.randomUUID(),
-            tradeId: id,
-            eventType: 'exit',
-            timestamp: data.closedAt,
-            description: `خروج از ${existing.symbol} @ ${data.exitPrice}${data.result ? ` — ${data.result}` : ''}`,
-            price: data.exitPrice,
-            data: null,
-            createdAt: Date.now(),
-          });
-        }
-      }
+    const operationId = crypto.randomUUID();
+    console.debug('[TradeSave]', {
+      mode: 'UPDATE',
+      tradeId,
+      source: 'tradeService',
+      operationId,
+      timestamp: Date.now(),
     });
 
-    return db.trades.get(id);
+    return serializeTradeUpdate(tradeId, async () => {
+      const existing = await db.trades.get(tradeId);
+      if (!existing) {
+        const error = new Error(`Trade "${tradeId}" no longer exists; refusing to create during UPDATE`);
+        console.error('[TradeSave] rejected missing UPDATE target', { tradeId, operationId });
+        throw error;
+      }
+
+      // The primary key is owned by the database identity, never by an edit
+      // payload.  This makes accidental ID replacement impossible.
+      const { id: _ignoredId, ...editableData } = data as Partial<Trade> & { id?: string };
+
+      await db.transaction('rw', [db.trades, db.tradeVersions, db.tradeEvents], async () => {
+        await db.trades.update(tradeId, editableData);
+
+        // ثبت نسخه در صورت تغییر فیلدهای مهم
+        await tradeVersionService.recordVersion(existing, editableData);
+
+        // اگر معامله بسته شد، رویداد exit اضافه کن
+        if (editableData.status === 'closed' && editableData.exitPrice != null && editableData.closedAt != null) {
+          const hasExitEvent = await db.tradeEvents
+            .where('tradeId').equals(tradeId)
+            .filter(e => e.eventType === 'exit')
+            .count();
+          if (hasExitEvent === 0) {
+            await db.tradeEvents.add({
+              id: crypto.randomUUID(),
+              tradeId,
+              eventType: 'exit',
+              timestamp: editableData.closedAt,
+              description: `خروج از ${existing.symbol} @ ${editableData.exitPrice}${editableData.result ? ` — ${editableData.result}` : ''}`,
+              price: editableData.exitPrice,
+              data: null,
+              createdAt: Date.now(),
+            });
+          }
+        }
+      });
+
+      return db.trades.get(tradeId);
+    });
   },
 
   /**
@@ -165,6 +220,9 @@ export const tradeService = {
         db.chartScreenshots,
         db.learningAuditTrail,
         db.marketContextSessions,
+        db.journalTradeData,
+        db.journalMedia,
+        db.journalTriggerEvents,
       ],
       async () => {
         // حذف رکوردهای وابسته
@@ -173,6 +231,20 @@ export const tradeService = {
         await db.riskViolations.where('tradeId').equals(id).delete();
         await db.chartScreenshots.where('tradeId').equals(id).delete();
         await db.learningAuditTrail.where('tradeId').equals(id).delete();
+        await db.journalTradeData.where('tradeId').equals(id).delete();
+        await db.journalMedia.where('tradeId').equals(id).delete();
+
+        // حذف معامله، تریگر سشن را نیز از وضعیت «تبدیل‌شده» به صف انتخاب برمی‌گرداند.
+        const linkedTriggers = await db.journalTriggerEvents.where('linkedTradeId').equals(id).toArray();
+        for (const trigger of linkedTriggers) {
+          await db.journalTriggerEvents.update(trigger.id, {
+            linkedTradeId: null,
+            status: 'pending',
+            linkedTradeDirection: null,
+            linkedTradeEntryTriggerOptionId: null,
+            updatedAt: Date.now(),
+          });
+        }
 
         // unlink کردن marketContextSessions بدون حذف آن‌ها
         const linkedSessions = await db.marketContextSessions
@@ -216,8 +288,8 @@ export const tradeService = {
     return {
       total: trades.length,
       winRate: closed.length > 0 ? (wins.length / closed.length) * 100 : 0,
-      totalPnl: trades.reduce((acc, t) => acc + (getTradeNetPnl(t) ?? 0), 0),
-      avgRMultiple: withR.length > 0 ? withR.reduce((acc, t) => acc + (t.rMultiple || 0), 0) / withR.length : 0,
+      totalPnl: trades.reduce((acc, t) => acc + (getNetPnl(t) ?? 0), 0),
+      avgRMultiple: withR.length > 0 ? withR.reduce((acc, t) => acc + (t.rMultiple ?? 0), 0) / withR.length : 0,
       closedCount: closed.length,
       openCount: trades.filter(t => t.status === 'open').length,
     };

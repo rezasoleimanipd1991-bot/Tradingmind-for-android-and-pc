@@ -22,6 +22,12 @@ export const isWin      = (t: Trade): boolean => t.result === 'win' || t.result 
 export const isLoss     = (t: Trade): boolean => t.result === 'loss' || t.result === 'partial-loss';
 export const isBreakEven= (t: Trade): boolean => t.result === 'breakeven';
 
+/** سود/زیان خالص پس از کسر کمیسیون، اسپرد و سایر هزینه‌ها. */
+export const getNetPnl = (t: Trade): number | null => {
+  if (t.profitLoss === null || t.profitLoss === undefined) return null;
+  return t.profitLoss - (t.fees ?? 0) - (t.commission ?? 0) - (t.spread ?? 0);
+};
+
 // ── تاریخ ─────────────────────────────────────────────────────────────────────
 
 /** تبدیل timestamp به رشته YYYY-MM-DD */

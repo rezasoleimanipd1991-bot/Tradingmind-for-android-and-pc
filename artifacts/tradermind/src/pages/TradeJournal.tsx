@@ -22,6 +22,7 @@ import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/ui/collapsible";
 import { t } from "../lib/i18n";
+import { getNetPnl } from "../lib/tradeHelpers";
 
 // ── PART 9 / Prompt 3 — Virtualized trade list ────────────────────────────────
 const ROW_HEIGHT = 49; // px — ارتفاع هر سطر جدول
@@ -41,6 +42,7 @@ function TradeListVirtualized({
   onSelectAll: () => void;
 }) {
   const tableRef = useRef<HTMLDivElement>(null);
+  const headerScrollRef = useRef<HTMLDivElement>(null);
   const mobileRef = useRef<HTMLDivElement>(null);
 
   const tableVirtualizer = useVirtualizer({
@@ -61,8 +63,20 @@ function TradeListVirtualized({
     <>
       {/* جدول — دسکتاپ */}
       <div className="hidden md:block rounded-xl border bg-card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm whitespace-nowrap">
+        <div
+          ref={headerScrollRef}
+          className="overflow-x-auto"
+          onScroll={event => {
+            if (tableRef.current) tableRef.current.scrollLeft = event.currentTarget.scrollLeft;
+          }}
+        >
+          <table className="min-w-[1064px] w-full table-fixed text-sm whitespace-nowrap">
+            <colgroup>
+              <col style={{ width: 44 }} /><col style={{ width: 116 }} /><col style={{ width: 120 }} />
+              <col style={{ width: 88 }} /><col style={{ width: 100 }} /><col style={{ width: 100 }} />
+              <col style={{ width: 100 }} /><col style={{ width: 124 }} /><col style={{ width: 64 }} />
+              <col style={{ width: 96 }} /><col style={{ width: 112 }} />
+            </colgroup>
             <thead className="text-xs text-muted-foreground uppercase bg-muted/30 border-b sticky top-0 z-10">
               <tr>
                 <th className="px-3 py-3 w-10">
@@ -85,9 +99,22 @@ function TradeListVirtualized({
             </thead>
           </table>
         </div>
-        <div ref={tableRef} className="overflow-y-auto max-h-[600px]" style={{ overscrollBehavior: 'contain' }}>
+        <div
+          ref={tableRef}
+          className="overflow-x-auto overflow-y-auto max-h-[600px]"
+          style={{ overscrollBehavior: 'contain' }}
+          onScroll={event => {
+            if (headerScrollRef.current) headerScrollRef.current.scrollLeft = event.currentTarget.scrollLeft;
+          }}
+        >
           <div style={{ height: tableVirtualizer.getTotalSize(), position: 'relative' }}>
-            <table className="w-full text-sm whitespace-nowrap">
+            <table className="min-w-[1064px] w-full table-fixed text-sm whitespace-nowrap">
+              <colgroup>
+                <col style={{ width: 44 }} /><col style={{ width: 116 }} /><col style={{ width: 120 }} />
+                <col style={{ width: 88 }} /><col style={{ width: 100 }} /><col style={{ width: 100 }} />
+                <col style={{ width: 100 }} /><col style={{ width: 124 }} /><col style={{ width: 64 }} />
+                <col style={{ width: 96 }} /><col style={{ width: 112 }} />
+              </colgroup>
               <tbody>
                 {tableVirtualizer.getVirtualItems().map(vi => {
                   const trade = trades[vi.index];
@@ -125,7 +152,7 @@ function TradeListVirtualized({
                       <td className="px-4 py-3 tabular-nums">{trade.exitPrice ?? '-'}</td>
                       <td className={`px-4 py-3 tabular-nums font-medium ${trade.profitLoss
                         ? (trade.profitLoss > 0 ? 'text-emerald-500' : 'text-rose-500') : ''}`}>
-                        {trade.profitLoss !== null ? `$${trade.profitLoss.toFixed(2)}` : '-'}
+                        {getNetPnl(trade) !== null ? `$${getNetPnl(trade)!.toFixed(2)}` : '-'}
                       </td>
                       <td className="px-4 py-3 tabular-nums">
                         {trade.rMultiple !== null ? `${trade.rMultiple}R` : '-'}
@@ -214,7 +241,7 @@ function TradeListVirtualized({
                         <div className="text-muted-foreground text-[10px] uppercase mb-0.5">سود/زیان</div>
                         <div className={`font-medium ${trade.profitLoss
                           ? (trade.profitLoss > 0 ? 'text-emerald-500' : 'text-rose-500') : ''}`}>
-                          {trade.profitLoss !== null ? `$${trade.profitLoss.toFixed(2)}` : '-'}
+                          {getNetPnl(trade) !== null ? `$${getNetPnl(trade)!.toFixed(2)}` : '-'}
                         </div>
                       </div>
                       <div className="text-right">

@@ -630,7 +630,7 @@ function SymbolsTab({ result, ext }: { result: EdgeAnalyticsResult; ext: Extende
       {/* Market Regime */}
       {ext.regimeSlices.length > 0 && (
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Activity className="w-4 h-4 text-primary"/>رژیم بازار</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Activity className="w-4 h-4 text-primary"/>Market Regime</CardTitle></CardHeader>
           <CardContent className="space-y-2">
             {ext.regimeSlices.map((r,i)=>(
               <div key={i} className="flex items-center gap-2 bg-muted/20 rounded-lg px-3 py-2 text-xs">
@@ -641,7 +641,7 @@ function SymbolsTab({ result, ext }: { result: EdgeAnalyticsResult; ext: Extende
                 <ConfidenceBadge level={r.metrics.confidence} />
               </div>
             ))}
-            <p className="text-[10px] text-muted-foreground">رژیم بازار از تگ‌های معامله استخراج می‌شود (trending، ranging، volatile، ...).</p>
+            <p className="text-[10px] text-muted-foreground">Market Regime از تگ‌های معامله استخراج می‌شود (trending، ranging، volatile، ...).</p>
           </CardContent>
         </Card>
       )}
@@ -772,7 +772,7 @@ function RiskTab({ ext }: { ext: ExtendedAnalyticsResult }) {
         <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Activity className="w-4 h-4 text-amber-400"/>MAE / MFE (بیشترین نوسان مطلوب/نامطلوب)</CardTitle></CardHeader>
         <CardContent>
           {mf.dataCount === 0 ? (
-            <EmptyState label="داده MAE/MFE موجود نیست. برای ثبت این داده، از بخش مانیتورینگ زنده استفاده کنید." />
+            <EmptyState label="داده MAE/MFE موجود نیست. آن را از بخش مانیتورینگ زنده یا از کارت «MFE / MAE» در مرور ژورنال هر معامله ثبت کنید." />
           ) : (
             <>
               <div className="grid grid-cols-2 gap-2 mb-3 sm:grid-cols-3">

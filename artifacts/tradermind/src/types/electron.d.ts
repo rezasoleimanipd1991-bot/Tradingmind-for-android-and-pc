@@ -16,6 +16,12 @@ declare global {
         scheduledAt: number;
       }) => Promise<boolean>;
       cancelReminder?: (id: string) => Promise<void>;
+      captureScreen?: () => Promise<{
+        dataUrl: string;
+        sourceName: string;
+        width: number;
+        height: number;
+      } | null>;
     };
   }
 }

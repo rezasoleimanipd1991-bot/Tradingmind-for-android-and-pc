@@ -33,17 +33,20 @@ import { formatDateFa } from "../lib/i18n";
 import { getByDay, getBySession } from "../services/performanceService";
 import { useAppStore } from "../store/useAppStore";
 import { getTradingDateKey, getTradingDateRange, getTradingMonthKey } from "../lib/tradingTime";
+import { getNetPnl } from "../lib/tradeHelpers";
+import { DashboardOverview } from "../components/dashboard/DashboardOverview";
 
 // ══════════════════════════════════════════════════════════════════
 // ثوابت و نوع‌ها
 // ══════════════════════════════════════════════════════════════════
 
-type RangeKey = "today" | "week" | "month" | "custom";
+type RangeKey = "today" | "week" | "month" | "year" | "custom";
 
 const RANGE_LABELS: Record<RangeKey, string> = {
   today: "امروز",
   week: "این هفته",
   month: "این ماه",
+  year: "امسال",
   custom: "بازه دلخواه",
 };
 
@@ -117,11 +120,9 @@ interface DashboardData {
   sessionProgress: Map<string, SessionProgress>;
 }
 
-async function loadDashboardData(queryFrom?: number, queryTo?: number): Promise<DashboardData> {
+async function loadDashboardData(): Promise<DashboardData> {
   const [trades, sessions, journals, strategies, todayJournal] = await Promise.all([
-    queryFrom !== undefined && queryTo !== undefined
-      ? tradeService.getTradesByDateRange(queryFrom, queryTo)
-      : tradeService.getTradesByDateRange(Date.now() - 90 * 24 * 60 * 60 * 1000, Date.now()),
+    tradeService.getAllTrades(),
     analysisService.getAllSessions(),
     journalService.getAllJournals(),
     strategyService.getAllStrategies(),
@@ -129,7 +130,7 @@ async function loadDashboardData(queryFrom?: number, queryTo?: number): Promise<
   ]);
 
   // بارگذاری اطلاعات پیشرفت برای Session‌های نیمه‌کاره
-  const inProgress = sessions.filter(s => s.status === "in-progress").slice(0, 12);
+  const inProgress = sessions.filter(s => s.status === "in-progress");
   const sessionProgress = new Map<string, SessionProgress>();
 
   await Promise.all(inProgress.map(async session => {
@@ -171,42 +172,27 @@ export default function Dashboard() {
   const [, setLocation] = useLocation();
   const tradingTimeMode = useAppStore(s => s.tradingTimeMode);
   const brokerUtcOffsetMinutes = useAppStore(s => s.brokerUtcOffsetMinutes);
-  const dashShowTrades = useAppStore(s => s.dashShowTrades);
-  const dashShowWinRate = useAppStore(s => s.dashShowWinRate);
-  const dashShowPnl = useAppStore(s => s.dashShowPnl);
-  const dashShowAvgR = useAppStore(s => s.dashShowAvgR);
-  const dashShowRecentTrades = useAppStore(s => s.dashShowRecentTrades);
-  const dashShowLastJournal = useAppStore(s => s.dashShowLastJournal);
-  const dashShowAdherence = useAppStore(s => s.dashShowAdherence);
+  const dashboardMessage = useAppStore(s => s.dashboardMessage);
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [rangeKey, setRangeKey] = useState<RangeKey>("week");
-  const [customFrom, setCustomFrom] = useState<string>(() => {
-    const d = new Date(); d.setDate(d.getDate() - 30);
-    return d.toISOString().split("T")[0];
-  });
-  const [customTo, setCustomTo] = useState<string>(() => new Date().toISOString().split("T")[0]);
+  const rangeKey = useAppStore(s => s.dashboardRange);
+  const setRangeKey = useAppStore(s => s.setDashboardRange);
+  const customFrom = useAppStore(s => s.dashboardCustomFrom);
+  const setCustomFrom = useAppStore(s => s.setDashboardCustomFrom);
+  const customTo = useAppStore(s => s.dashboardCustomTo);
+  const setCustomTo = useAppStore(s => s.setDashboardCustomTo);
   const [exportingBackup, setExportingBackup] = useState(false);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [tradingBoxes, setTradingBoxes] = useState<TradingBox[]>([]);
   const customFromRef = useRef<HTMLInputElement>(null);
+  const changeRange = useCallback((key: RangeKey) => {
+    setRangeKey(key);
+    if (key === "custom") setTimeout(() => customFromRef.current?.focus(), 50);
+  }, [setRangeKey]);
 
   const reload = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    const selected = rangeKey === "custom"
-      ? {
-          from: getTradingDateRange(customFrom).from,
-          to: getTradingDateRange(customTo).to,
-        }
-      : getDateRange(rangeKey);
-    const duration = Math.max(24 * 60 * 60 * 1000, selected.to - selected.from);
-    return loadDashboardData(Math.max(0, selected.from - duration), selected.to)
-      .then(setData)
-      .catch(() => setError("بارگذاری داشبورد انجام نشد. لطفاً دوباره تلاش کنید."))
-      .finally(() => setLoading(false));
-  }, [rangeKey, customFrom, customTo]);
+    loadDashboardData().then(setData).finally(() => setLoading(false));
+  }, []);
 
   useEffect(() => { reload(); }, [reload]);
   useEffect(() => {
@@ -231,7 +217,7 @@ export default function Dashboard() {
     const closed = rangedTrades.filter(t => t.status === "closed");
     const wins = closed.filter(t => t.result === "win" || t.result === "partial-win");
     const withR = closed.filter(t => t.rMultiple != null);
-    const totalPnl = closed.reduce((s, t) => s + (t.profitLoss || 0), 0);
+    const totalPnl = closed.reduce((s, t) => s + (getNetPnl(t) ?? 0), 0);
     return {
       total: rangedTrades.length,
       winRate: closed.length > 0 ? (wins.length / closed.length) * 100 : 0,
@@ -261,8 +247,9 @@ export default function Dashboard() {
       .slice(-20);
     let cum = 0;
     return closed.map((t, i) => {
-      cum += t.profitLoss || 0;
-      return { index: i + 1, symbol: t.symbol, pnl: +(t.profitLoss || 0).toFixed(2), cumulative: +cum.toFixed(2) };
+      const pnl = getNetPnl(t) ?? 0;
+      cum += pnl;
+      return { index: i + 1, symbol: t.symbol, pnl: +pnl.toFixed(2), cumulative: +cum.toFixed(2) };
     });
   }, [data, tradingTimeMode, brokerUtcOffsetMinutes]);
 
@@ -309,8 +296,8 @@ export default function Dashboard() {
     const closed = prevTrades.filter(t => t.status === "closed");
     const wins = closed.filter(t => t.result === "win" || t.result === "partial-win");
     const losses = closed.filter(t => t.result === "loss" || t.result === "partial-loss");
-    const totalWinPnl = wins.reduce((s, t) => s + Math.max(0, t.profitLoss ?? 0), 0);
-    const totalLossPnl = Math.abs(losses.reduce((s, t) => s + Math.min(0, t.profitLoss ?? 0), 0));
+    const totalWinPnl = wins.reduce((s, t) => s + Math.max(0, getNetPnl(t) ?? 0), 0);
+    const totalLossPnl = Math.abs(losses.reduce((s, t) => s + Math.min(0, getNetPnl(t) ?? 0), 0));
     const withR = closed.filter(t => t.rMultiple != null);
     const winRs = wins.filter(t => t.rMultiple != null).map(t => t.rMultiple!);
     const lossRs = losses.filter(t => t.rMultiple != null).map(t => Math.abs(t.rMultiple!));
@@ -319,7 +306,7 @@ export default function Dashboard() {
     return {
       closedCount: closed.length,
       winRate: closed.length > 0 ? (wins.length / closed.length) * 100 : 0,
-      totalPnl: closed.reduce((s, t) => s + (t.profitLoss ?? 0), 0),
+      totalPnl: closed.reduce((s, t) => s + (getNetPnl(t) ?? 0), 0),
       avgR: withR.length ? withR.reduce((s, t) => s + (t.rMultiple ?? 0), 0) / withR.length : null,
       profitFactor: totalLossPnl > 0 ? totalWinPnl / totalLossPnl : null,
       avgWinPnl: wins.length ? totalWinPnl / wins.length : null,
@@ -334,13 +321,13 @@ export default function Dashboard() {
     if (!closed.length) return null;
     const wins   = closed.filter(t => t.result === "win" || t.result === "partial-win");
     const losses = closed.filter(t => t.result === "loss" || t.result === "partial-loss");
-    const totalWinPnl  = wins.reduce((s, t) => s + Math.max(0, t.profitLoss ?? 0), 0);
-    const totalLossPnl = Math.abs(losses.reduce((s, t) => s + Math.min(0, t.profitLoss ?? 0), 0));
+    const totalWinPnl  = wins.reduce((s, t) => s + Math.max(0, getNetPnl(t) ?? 0), 0);
+    const totalLossPnl = Math.abs(losses.reduce((s, t) => s + Math.min(0, getNetPnl(t) ?? 0), 0));
     const winRs  = wins.filter(t => t.rMultiple != null).map(t => t.rMultiple!);
     const lossRs = losses.filter(t => t.rMultiple != null).map(t => Math.abs(t.rMultiple!));
     const avgWinR  = winRs.length  ? winRs.reduce((s, v) => s + v, 0)  / winRs.length  : null;
     const avgLossR = lossRs.length ? lossRs.reduce((s, v) => s + v, 0) / lossRs.length : null;
-    const pnls = closed.map(t => t.profitLoss ?? 0);
+    const pnls = closed.map(t => getNetPnl(t) ?? 0);
     return {
       bestPnl:      Math.max(...pnls),
       worstPnl:     Math.min(...pnls),
@@ -360,7 +347,7 @@ export default function Dashboard() {
     const monthMap = new Map<string, number>();
     allClosed.forEach(t => {
       const key = getTradingMonthKey(t.closedAt ?? t.openedAt);
-      monthMap.set(key, (monthMap.get(key) ?? 0) + (t.profitLoss ?? 0));
+      monthMap.set(key, (monthMap.get(key) ?? 0) + (getNetPnl(t) ?? 0));
     });
     const FA_MONTHS = ["ژانویه","فوریه","مارس","آوریل","مه","ژوئن","ژوئیه","آگوست","سپتامبر","اکتبر","نوامبر","دسامبر"];
     const monthlyPnl = [...monthMap.entries()]
@@ -457,35 +444,22 @@ export default function Dashboard() {
     );
   }
 
-  if (error || !data) {
-    return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 text-center" dir="rtl">
-        <AlertCircle className="h-10 w-10 text-destructive" />
-        <p className="text-muted-foreground">{error || "اطلاعات داشبورد در دسترس نیست."}</p>
-        <Button variant="outline" onClick={reload}>تلاش مجدد</Button>
-      </div>
-    );
-  }
-
   // ══════════════════════════════════════════════
   // کاربر جدید — Empty State
   // ══════════════════════════════════════════════
   if (isNewUser) {
     return (
-      <div className="hero-empty-state relative overflow-hidden flex flex-col items-center justify-center min-h-[70vh] text-center gap-6 px-4 rounded-[2rem] border border-primary/10" dir="rtl">
-        <div className="absolute -top-24 -left-20 h-72 w-72 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-32 -right-20 h-80 w-80 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none" />
-        <div className="relative w-20 h-20 rounded-[1.6rem] bg-gradient-to-br from-primary to-indigo-400 flex items-center justify-center shadow-xl shadow-primary/25">
-          <Target className="w-10 h-10 text-primary-foreground" />
+      <div className="flex flex-col items-center justify-center min-h-[70vh] text-center gap-6 px-4" dir="rtl">
+        <div className="w-20 h-20 rounded-3xl bg-primary/10 flex items-center justify-center">
+          <Target className="w-10 h-10 text-primary" />
         </div>
-        <div className="relative">
-          <p className="text-xs font-semibold tracking-[0.22em] text-primary mb-3">TRADERMIND OS</p>
-          <h1 className="text-2xl sm:text-3xl font-bold mb-2">به TraderMind خوش آمدی</h1>
-          <p className="text-muted-foreground max-w-md leading-7">
+        <div>
+          <h1 className="text-2xl font-bold mb-2">به TraderMind خوش آمدی</h1>
+          <p className="text-muted-foreground max-w-sm">
             اولین استراتژی‌ات را ایجاد کن تا مسیر تحلیل و ژورنال‌نویسی حرفه‌ای را شروع کنیم.
           </p>
         </div>
-        <div className="relative flex flex-col sm:flex-row gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <Link href="/strategies/new">
             <Button size="lg" className="gap-2">
               <Plus className="w-5 h-5" /> ایجاد اولین استراتژی
@@ -497,13 +471,13 @@ export default function Dashboard() {
             </Button>
           </Link>
         </div>
-        <div className="relative grid grid-cols-3 gap-3 mt-4 text-sm text-muted-foreground max-w-md w-full">
+        <div className="grid grid-cols-3 gap-4 mt-4 text-sm text-muted-foreground max-w-sm w-full">
           {[
             { icon: Target, text: "استراتژی بساز" },
             { icon: ActivitySquare, text: "تحلیل کن" },
             { icon: BarChart3, text: "رشد کن" },
           ].map(({ icon: Icon, text }) => (
-            <div key={text} className="flex flex-col items-center gap-2 p-4 rounded-2xl border border-primary/15 bg-background/40 backdrop-blur-sm">
+            <div key={text} className="flex flex-col items-center gap-2 p-3 rounded-xl border border-dashed">
               <Icon className="w-5 h-5 opacity-50" />
               <span>{text}</span>
             </div>
@@ -523,15 +497,15 @@ export default function Dashboard() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{getGreeting()} 👋</h1>
-          <p className="text-muted-foreground mt-1">{getGreetingSub()}</p>
+          <p className="text-muted-foreground mt-1">{dashboardMessage || getGreetingSub()}</p>
         </div>
         {/* دکمه‌های اصلی */}
         <div className="flex gap-2 shrink-0">
-          <Link href="/analysis/new">
+          <Link href="/journal/sessions">
             <Button className="gap-2">
               <ActivitySquare className="w-4 h-4" />
-              <span className="hidden sm:inline">شروع تحلیل جدید</span>
-              <span className="sm:hidden">تحلیل</span>
+              <span className="hidden sm:inline">شروع سشن معاملاتی</span>
+              <span className="sm:hidden">سشن جدید</span>
             </Button>
           </Link>
           <Link href="/journal/trades/new">
@@ -543,6 +517,19 @@ export default function Dashboard() {
           </Link>
         </div>
       </div>
+
+      {/* ━━━━━━━━━━━━━━━━ 1b. نمای کلی (KPI، Equity، توزیع) — فاز ۳ ━━━━━━━━━━━━━━━━ */}
+      <DashboardOverview
+        trades={rangedTrades}
+        strategyName={(id) => stratMap.get(id) ?? "استراتژی نامشخص"}
+        range={rangeKey}
+        onRangeChange={changeRange}
+        prev={prevRangedStats ? {
+          winRate: prevRangedStats.closedCount > 0 ? prevRangedStats.winRate : null,
+          profitFactor: prevRangedStats.profitFactor,
+          closedCount: prevRangedStats.closedCount,
+        } : null}
+      />
 
       {/* ━━━━━━━━━━━━━━━━ 2. تحلیل‌های نیمه‌کاره ━━━━━━━━━━━━━━━━ */}
       {inProgressSessions.length > 0 && (
@@ -641,31 +628,24 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* شروع تحلیل جدید */}
+        {/* شروع سشن معاملاتی */}
         <Card className="flex flex-col justify-between bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
           <CardContent className="p-6 flex flex-col h-full justify-between gap-4">
             <div>
               <div className="w-12 h-12 rounded-2xl bg-primary/20 flex items-center justify-center mb-4">
                 <ActivitySquare className="w-6 h-6 text-primary" />
               </div>
-              <h3 className="text-lg font-bold">شروع تحلیل جدید</h3>
+              <h3 className="text-lg font-bold">شروع سشن معاملاتی</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                استراتژی خود را انتخاب کن و تحلیل گام‌به‌گام را شروع کن.
+                تحلیل تایم‌فریم‌های بالاتر و چند معاملهٔ ورود را در یک روز معاملاتی کنار هم ثبت کنید.
               </p>
             </div>
             <div className="flex gap-2">
-              <Link href="/analysis/new" className="flex-1">
+              <Link href="/journal/sessions" className="flex-1">
                 <Button className="w-full gap-2">
-                  <Plus className="w-4 h-4" /> شروع تحلیل
+                  <Plus className="w-4 h-4" /> شروع سشن
                 </Button>
               </Link>
-              {lastUsedStrategy && (
-                <Link href={`/analysis/new?strategyId=${lastUsedStrategy.strategy.id}`}>
-                  <Button variant="outline" size="icon" title="شروع با آخرین استراتژی">
-                    <Zap className="w-4 h-4" />
-                  </Button>
-                </Link>
-              )}
             </div>
           </CardContent>
         </Card>
@@ -683,7 +663,7 @@ export default function Dashboard() {
               {(Object.entries(RANGE_LABELS) as [RangeKey, string][]).map(([key, label]) => (
                 <button
                   key={key}
-                  onClick={() => { setRangeKey(key); if (key === "custom") setTimeout(() => customFromRef.current?.focus(), 50); }}
+                  onClick={() => changeRange(key)}
                   className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
                     rangeKey === key
                       ? "bg-background shadow text-foreground"
@@ -727,38 +707,31 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {dashShowTrades && (
-                <StatCard
-                  label="تعداد معاملات"
-                  value={rangedStats.total.toLocaleString("fa-IR")}
-                  sub={`${rangedStats.closedCount.toLocaleString("fa-IR")} بسته`}
-                />
-              )}
-              {dashShowWinRate && (
-                <StatCard
-                  label="درصد برد"
-                  value={`${rangedStats.winRate.toFixed(1)}٪`}
-                  valueClass={rangedStats.winRate >= 50 ? "text-emerald-500" : "text-rose-500"}
-                />
-              )}
-              {dashShowPnl && (
-                <StatCard
-                  label="سود / ضرر"
-                  value={`${rangedStats.totalPnl >= 0 ? "+" : ""}$${rangedStats.totalPnl.toFixed(2)}`}
-                  valueClass={rangedStats.totalPnl >= 0 ? "text-emerald-500" : "text-rose-500"}
-                />
-              )}
-              {dashShowAvgR && (
-                <StatCard
-                  label="میانگین R"
-                  value={rangedStats.avgR != null ? `${rangedStats.avgR.toFixed(2)}R` : "—"}
-                  valueClass={
-                    rangedStats.avgR == null ? undefined
-                    : rangedStats.avgR >= 0 ? "text-emerald-500"
-                    : "text-rose-500"
-                  }
-                />
-              )}
+              <StatCard
+                label="تعداد معاملات"
+                value={rangedStats.total.toLocaleString("fa-IR")}
+                sub={`${rangedStats.closedCount.toLocaleString("fa-IR")} بسته`}
+              />
+              <StatCard
+                label="درصد برد"
+                value={`${rangedStats.winRate.toFixed(1)}٪`}
+                valueClass={rangedStats.winRate >= 50 ? "text-emerald-500" : "text-rose-500"}
+              />
+              <StatCard
+                label="سود / ضرر"
+                value={`${rangedStats.totalPnl >= 0 ? "+" : ""}$${rangedStats.totalPnl.toFixed(2)}`}
+                valueClass={rangedStats.totalPnl >= 0 ? "text-emerald-500" : "text-rose-500"}
+              />
+              <StatCard
+                label="میانگین R"
+                value={rangedStats.avgR != null ? `${rangedStats.avgR.toFixed(2)}R` : "—"}
+                hint="میانگین حسابی R معاملات بستهٔ دارای مقدار R ثبت‌شده"
+                valueClass={
+                  rangedStats.avgR == null ? undefined
+                  : rangedStats.avgR >= 0 ? "text-emerald-500"
+                  : "text-rose-500"
+                }
+              />
             </div>
           )}
         </CardContent>
@@ -837,7 +810,7 @@ export default function Dashboard() {
               const accTrades = (data?.trades ?? []).filter((t: any) => t.accountId === acc.id);
               const closed = accTrades.filter(t => t.status === 'closed');
               const wins = closed.filter(t => t.result === 'win' || t.result === 'partial-win');
-              const pnl = closed.reduce((s, t) => s + (t.profitLoss || 0), 0);
+              const pnl = closed.reduce((s, t) => s + (getNetPnl(t) ?? 0), 0);
               const winRate = closed.length > 0 ? Math.round((wins.length / closed.length) * 100) : null;
               return (
                 <Link key={acc.id} href={`/journal/trades?accountId=${acc.id}`}>
@@ -881,7 +854,7 @@ export default function Dashboard() {
               const boxTrades = (data?.trades ?? []).filter((t: any) => t.boxId === box.id);
               const closed = boxTrades.filter(t => t.status === 'closed');
               const wins = closed.filter(t => t.result === 'win' || t.result === 'partial-win');
-              const pnl = closed.reduce((s, t) => s + (t.profitLoss || 0), 0);
+              const pnl = closed.reduce((s, t) => s + (getNetPnl(t) ?? 0), 0);
               const targetCount = box.targetTradeCount || 0;
               const progress = targetCount > 0 ? Math.min(100, Math.round((boxTrades.length / targetCount) * 100)) : null;
               const winRate = closed.length > 0 ? Math.round((wins.length / closed.length) * 100) : null;
@@ -920,7 +893,7 @@ export default function Dashboard() {
       <div className="grid gap-4 lg:grid-cols-2">
 
         {/* آخرین معاملات */}
-        {dashShowRecentTrades && <Card className="flex flex-col">
+        <Card className="flex flex-col">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
@@ -954,8 +927,8 @@ export default function Dashboard() {
                       </div>
                       <div className="text-right shrink-0">
                         <p className={`font-semibold text-sm ${RESULT_CLS[trade.result] ?? ""}`}>
-                          {trade.profitLoss != null
-                            ? `${trade.profitLoss >= 0 ? "+" : ""}$${Math.abs(trade.profitLoss).toFixed(2)}`
+                          {getNetPnl(trade) != null
+                            ? `${getNetPnl(trade)! >= 0 ? "+" : ""}$${Math.abs(getNetPnl(trade)!).toFixed(2)}`
                             : RESULT_FA[trade.result] ?? trade.result}
                         </p>
                         {trade.rMultiple != null && (
@@ -968,10 +941,10 @@ export default function Dashboard() {
               </div>
             )}
           </CardContent>
-        </Card>}
+        </Card>
 
         {/* آخرین ژورنال‌ها */}
-        {dashShowLastJournal && <Card className="flex flex-col">
+        <Card className="flex flex-col">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
@@ -1010,7 +983,7 @@ export default function Dashboard() {
               </div>
             )}
           </CardContent>
-        </Card>}
+        </Card>
       </div>
 
       {/* ━━━━━━━━━━━━━━━━ 6. آخرین استراتژی + پایبندی ━━━━━━━━━━━━━━━━ */}
@@ -1042,7 +1015,7 @@ export default function Dashboard() {
         )}
 
         {/* پایبندی به استراتژی */}
-        {dashShowAdherence && <Card>
+        <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Shield className="w-4 h-4 text-primary" /> پایبندی به قوانین استراتژی
@@ -1074,7 +1047,7 @@ export default function Dashboard() {
               </div>
             )}
           </CardContent>
-        </Card>}
+        </Card>
       </div>
 
       {/* ━━━━━━━━━━━━━━━━ 7. نمودارهای تحلیلی ━━━━━━━━━━━━━━━━ */}
@@ -1434,14 +1407,15 @@ function KpiCard({
   );
 }
 
-function StatCard({ label, value, sub, valueClass }: {
-  label: string; value: string; sub?: string; valueClass?: string;
+function StatCard({ label, value, sub, hint, valueClass }: {
+  label: string; value: string; sub?: string; hint?: string; valueClass?: string;
 }) {
   return (
     <div className="p-3 rounded-xl border bg-card/50 space-y-1">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className={`text-xl font-bold ${valueClass ?? ""}`}>{value}</p>
       {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
     </div>
   );
 }

@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { t, formatDateFullFa, toDateStr } from "../lib/i18n";
 import { cn } from "../lib/utils";
 import { useNavigationGuard } from "../navigation/NavigationGuard";
-import { useAppStore } from "../store/useAppStore";
+import { VoiceTypingButton } from "../components/ui/VoiceTypingButton";
 
 // ================================================================
 // کامپوننت‌های کمکی
@@ -236,7 +236,6 @@ function formToJournal(form: FormData, date: string): Omit<DailyJournal, 'id' | 
 export default function DailyEntry() {
   const { date } = useParams<{ date: string }>();
   const [, setLocation] = useLocation();
-  const journalAutosave = useAppStore(s => s.journalAutosave);
 
   const [form, setForm] = useState<FormData>(defaultForm);
   const [customEmotions, setCustomEmotions] = useState<string[]>([]);
@@ -296,14 +295,10 @@ export default function DailyEntry() {
   // Autosave
   useEffect(() => {
     if (!hasLoaded) return;
-    if (!journalAutosave) {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      return;
-    }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => saveJournal(form, true), 1500);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [form, hasLoaded, journalAutosave, saveJournal]);
+  }, [form, hasLoaded]);
 
   const update = <K extends keyof FormData>(key: K, value: FormData[K]) =>
     setForm(prev => ({ ...prev, [key]: value }));
@@ -481,14 +476,17 @@ export default function DailyEntry() {
         {/* افزودن احساس دلخواه */}
         {showAddEmotion ? (
           <div className="flex gap-2 pt-1">
-            <input
-              autoFocus
-              value={newEmotion}
-              onChange={e => setNewEmotion(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') addCustomEmotion(); if (e.key === 'Escape') setShowAddEmotion(false); }}
-              placeholder={t.journal.customEmotionPlaceholder}
-              className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            />
+            <div className="min-w-0 flex-1 space-y-0.5">
+              <div className="flex h-5 justify-end"><VoiceTypingButton /></div>
+              <input
+                autoFocus
+                value={newEmotion}
+                onChange={e => setNewEmotion(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') addCustomEmotion(); if (e.key === 'Escape') setShowAddEmotion(false); }}
+                placeholder={t.journal.customEmotionPlaceholder}
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
             <Button size="sm" onClick={addCustomEmotion}>{t.common.add}</Button>
             <Button size="sm" variant="ghost" onClick={() => setShowAddEmotion(false)}>
               <X className="h-4 w-4" />

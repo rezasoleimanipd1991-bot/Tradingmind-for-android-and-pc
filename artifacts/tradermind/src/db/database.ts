@@ -16,16 +16,6 @@ export function blobToObjectUrl(blob: Blob): string {
   return URL.createObjectURL(blob);
 }
 
-export type StrategyMode = 'standard' | 'major-trading' | 'session-trading';
-
-export interface StrategySetupDefinition {
-  id: string;
-  name: string;
-  trigger: string;
-  conditions: string;
-  liquidityClassification: 'major' | 'minor' | 'auto';
-}
-
 export interface Strategy {
   id: string;
   name: string;
@@ -35,12 +25,6 @@ export interface Strategy {
   isActive: boolean;
   createdAt: number;
   updatedAt: number;
-  /** ساختار اختیاری استراتژی‌های شرطی؛ برای داده‌های قدیمی nullable باقی می‌ماند. */
-  strategyMode?: StrategyMode;
-  higherTimeframes?: string;
-  lowerTimeframes?: string;
-  liquidityZones?: string;
-  setupDefinitions?: string;
 }
 
 export interface Phase {
@@ -56,10 +40,13 @@ export interface Rule {
   stepId: string;
   title: string;
   description: string;
-  type: 'checkbox' | 'text' | 'textarea' | 'number' | 'select' | 'multi-select' | 'date' | 'image';
+  type: 'checkbox' | 'text' | 'textarea' | 'number' | 'select' | 'multi-select' | 'date' | 'image' | 'conditional';
   required: boolean;
   order: number;
   options: string; // JSON string[]
+  /** متن شرط و اقدام برای Ruleهای «اگر… آنگاه…» */
+  condition?: string;
+  action?: string;
 }
 
 export interface Step {
@@ -92,6 +79,10 @@ export interface AnalysisSession {
 export interface Trade {
   id: string;
   sessionId: string | null;
+  /** Session-based journal link. Kept separate from sessionId, which belongs to AnalysisSession. */
+  journalSessionId?: string | null;
+  journalAnalysisEventId?: string | null;
+  journalTriggerEventId?: string | null;
   strategyId: string | null;
   accountId: string | null;   // حساب معاملاتی
   boxId: string | null;        // باکس معاملاتی
@@ -109,12 +100,8 @@ export interface Trade {
   result: 'win' | 'loss' | 'breakeven' | 'partial-win' | 'partial-loss' | 'open' | 'cancelled';
   profitLoss: number | null;
   fees: number | null;
-  /** کمیسیون صریح معامله؛ هزینه نهایی از fees + commission + spread محاسبه می‌شود. */
-  commission?: number | null;
-  /** هزینه اسپرد به واحد پول حساب. */
-  spread?: number | null;
-  /** شماره تیکت/ثبت معامله در متاتریدر یا بروکر. */
-  ticketNumber?: string | null;
+  commission?: number | null;   // کمیسیون جدا از سایر هزینه‌ها
+  spread?: number | null;       // هزینه اسپرد به واحد ارز حساب
   status: 'open' | 'closed' | 'cancelled';
   openedAt: number;
   closedAt: number | null;
@@ -156,9 +143,21 @@ export interface Trade {
   managementReason: string | null;
   // Multi-timeframe analysis (JSON MTFAnalysis)
   mtfAnalysis: string | null;
+  // Briefing پیش از معامله، قابل ویرایش و ذخیره در backup
+  preTradeBriefing?: string | null;
 }
 
 /** ── Multi-Timeframe Analysis ─────────────────────────────────────── */
+export interface MTFScenario {
+  id: string;
+  direction: 'long' | 'short' | 'both';
+  timeframe: string;
+  trigger: string;
+  invalidation: string;
+  action: string;
+  enabled: boolean;
+}
+
 export interface MTFTimeframeAnalysis {
   screenshotId: string | null;
   bias: string;
@@ -174,12 +173,7 @@ export interface MTFAnalysis {
   '15M': MTFTimeframeAnalysis;
   '5M': MTFTimeframeAnalysis;
   '1M': MTFTimeframeAnalysis;
-  scenario?: {
-    status: 'liquidity-hunt' | 'confirmation' | 'scenario-failed' | 'no-trade' | '';
-    condition: string;
-    noTradeReason: string;
-    invalidation: string;
-  };
+  scenarios?: MTFScenario[];
 }
 
 export const defaultMTFTimeframe: MTFTimeframeAnalysis = {
@@ -851,6 +845,8 @@ export interface ChartScreenshot {
   setup: string | null;
   strategy: string | null;
   tradeId: string | null;      // لینک به معامله مرتبط
+  sourceTradeScreenshotId?: string | null;
+  sourceMediaId?: string | null;
   screenshotType: string;      // ChartScreenshotType
   label: string | null;
   notes: string | null;
@@ -936,6 +932,9 @@ export interface Account {
   currentBalance: number | null;
   color: string;              // رنگ شناسه‌ای
   isDefault: boolean;
+  isArchived?: boolean;
+  /** Boxes explicitly available to this account; absent on legacy records. */
+  tradingBoxIds?: string[];
   notes: string | null;
   createdAt: number;
   updatedAt: number;
@@ -945,8 +944,8 @@ export interface Account {
 
 export interface TradingBox {
   id: string;
+  accountId?: string | null;       // باکس اختصاصی یک حساب؛ null یعنی مشترک
   name: string;               // مثلاً «باکس ۱» یا «آزمون استراتژی بهار»
-  accountId: string | null;   // هر باکس به یک حساب تعلق دارد
   description: string | null;
   targetTradeCount: number | null;  // هدف تعداد معاملات
   color: string;
@@ -954,6 +953,165 @@ export interface TradingBox {
   notes: string | null;
   createdAt: number;
   updatedAt: number;
+}
+
+export type JournalSessionStatus = 'active' | 'completed' | 'cancelled';
+
+export interface JournalSession {
+  id: string;
+  accountId: string;
+  tradingBoxId: string;
+  strategyId: string;
+  strategyVersionId: string;
+  symbols: string;
+  marketOptionId?: string | null;
+  startTime: number;
+  endTime: number | null;
+  status: JournalSessionStatus;
+  sessionTypeOptionId: string | null;
+  notes: string;
+  tags: string;
+  preTradePsychology?: string;
+  lessonsLearned: string;
+  mistakesReview: string;
+  psychologicalReview: string;
+  strategyObservations: string;
+  strategyChangeProposal: string;
+  sessionQuality?: number | null;
+  finalReflection?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface JournalOption {
+  id: string;
+  category: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+  required?: boolean;
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface JournalSessionAnalysis {
+  id: string;
+  sessionId: string;
+  timeframeOptionId: string;
+  analysisText?: string;
+  marketContext?: string;
+  directionOptionId: string | null;
+  marketStructureOptionId: string | null;
+  liquidityContextOptionIds: string;
+  expectedDirectionOptionId: string | null;
+  scenario?: string;
+  triggerContext?: string;
+  zones: string;
+  notes: string;
+  tags: string;
+  previousTradeId?: string | null;
+  nextTradeId?: string | null;
+  /** اندازهٔ مومنتوم بازار (متن آزاد). */
+  momentumText?: string;
+  /** موقعیت فعلی قیمت (متن آزاد). */
+  pricePositionText?: string;
+  /** منطق جهت (متن آزاد). */
+  directionLogicText?: string;
+  /**
+   * JSON از نوع Record<fieldKey, string[]> برای فیلدهایی که کاربر آن‌ها را
+   * به‌صورت چک‌باکس تنظیم کرده است (مثلاً «نواحی پیش رو»).
+   */
+  fieldSelections?: string;
+  /** نتیجهٔ سناریو که بعد از پایان سشن ثبت می‌شود (دستهٔ scenario_outcome). */
+  scenarioOutcomeOptionId?: string | null;
+  scenarioOutcomeNote?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface JournalTriggerEvent {
+  id: string;
+  sessionId: string;
+  timeframeOptionId: string;
+  analysisEventId: string | null;
+  /**
+   * همهٔ رویدادهای تحلیلِ مرتبط با این تریگر (چند تایم‌فریم).
+   * analysisEventId همچنان اولین مورد را برای سازگاری با داده‌های قبلی نگه می‌دارد.
+   */
+  analysisEventIds?: string[];
+  triggerTypeOptionId: string | null;
+  description: string;
+  marketMovement: string;
+  directionOptionId: string | null;
+  confirmed: boolean;
+  status: 'pending' | 'ignored' | 'invalid' | 'converted';
+  notes: string;
+  linkedTradeId: string | null;
+  /** Last direction copied from this trigger, used to avoid overwriting manual trade edits. */
+  linkedTradeDirection?: Trade['direction'] | null;
+  /** Last entry-trigger option copied from this event into JournalTradeData. */
+  linkedTradeEntryTriggerOptionId?: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface StrategyVersion {
+  id: string;
+  strategyId: string;
+  versionNumber: string;
+  strategyName: string;
+  description: string;
+  rulesSnapshot: string;
+  createdAt: number;
+}
+
+export interface JournalTradeData {
+  id: string;
+  tradeId: string;
+  journalSessionId: string;
+  entryTriggerOptionIds: string;
+  entryReasonOptionId: string | null;
+  exitReasonOptionId: string | null;
+  setupTypeOptionId: string | null;
+  setupGradeOptionId: string | null;
+  scoTypeOptionId?: string | null;
+  fvgTypeOptionId?: string | null;
+  scenarioOutcomeOptionId?: string | null;
+  checklistResults: string;
+  psychology: string;
+  mistakeOptionIds: string;
+  strategyCompliance: 'yes' | 'partially' | 'no' | null;
+  violatedRuleIds: string;
+  setupQuality: number | null;
+  executionQuality: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface JournalSessionEvent {
+  id: string;
+  sessionId: string;
+  typeOptionId: string;
+  notes: string;
+  eventAt: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface JournalMedia {
+  id: string;
+  sessionId: string | null;
+  tradeId: string | null;
+  analysisId: string | null;
+  triggerId?: string | null;
+  reviewId?: string | null;
+  category: 'before-entry' | 'entry' | 'during-trade' | 'after-exit' | 'session' | 'analysis' | 'trigger' | 'review';
+  fileName: string;
+  mimeType: string;
+  blob: Blob;
+  caption: string;
+  createdAt: number;
 }
 
 /** ── Dexie Database ──────────────────────────────────────────────── */
@@ -997,6 +1155,14 @@ class TraderMindDB extends Dexie {
   // v18 — حساب‌ها و باکس‌های معاملاتی
   accounts!: Table<Account>;
   tradingBoxes!: Table<TradingBox>;
+  journalSessions!: Table<JournalSession>;
+  journalOptions!: Table<JournalOption>;
+  journalSessionAnalyses!: Table<JournalSessionAnalysis>;
+  journalTriggerEvents!: Table<JournalTriggerEvent>;
+  strategyVersions!: Table<StrategyVersion>;
+  journalTradeData!: Table<JournalTradeData>;
+  journalSessionEvents!: Table<JournalSessionEvent>;
+  journalMedia!: Table<JournalMedia>;
 
   constructor() {
     super('TraderMindDB');
@@ -1382,10 +1548,22 @@ class TraderMindDB extends Dexie {
       screenshotCollections: 'id, name, isDefault, createdAt',
       accounts: 'id, name, isDefault, createdAt',
       tradingBoxes: 'id, name, status, createdAt',
-    }).upgrade(() => {
-      // مهاجرت Base64 به Blob عمداً در schema upgrade انجام نمی‌شود.
-      // تبدیل همهٔ تصاویر می‌تواند بازشدن کل برنامه را روی موبایل قفل کند؛
-      // این کار بعد از بازشدن DB و به‌صورت batch انجام می‌شود.
+    }).upgrade(async tx => {
+      // تبدیل dataUrl → imageBlob برای تمام رکوردهای موجود
+      const screenshots = await tx.table('chartScreenshots').toArray();
+      for (const ss of screenshots) {
+        if (ss.dataUrl && ss.dataUrl.startsWith('data:') && !ss.imageBlob) {
+          try {
+            const blob = dataUrlToBlob(ss.dataUrl);
+            await tx.table('chartScreenshots').update(ss.id, {
+              imageBlob: blob,
+              dataUrl: '',      // پاکسازی Base64 پس از تبدیل موفق
+            });
+          } catch {
+            // اگر تبدیل شکست خورد، dataUrl را نگه می‌داریم
+          }
+        }
+      }
     });
 
     // ====================================================
@@ -1447,62 +1625,161 @@ class TraderMindDB extends Dexie {
       tradingBoxes: 'id, name, status, createdAt',
     });
 
-    // نسخه ۲۲: اتصال هر باکس معاملاتی به یک حساب
+    // نسخه ۲۲ — تفکیک کمیسیون/اسپرد و اتصال اختیاری باکس به حساب
     this.version(22).stores({
-      tradingBoxes: 'id, name, accountId, status, createdAt',
-    }).upgrade(tx => {
-      return tx.table('tradingBoxes').toCollection().modify((box: TradingBox) => {
+      trades: [
+        'id', 'sessionId', 'strategyId', 'accountId', 'boxId',
+        'symbol', 'direction', 'result', 'status', 'openedAt', 'closedAt',
+        '[symbol+openedAt]', '[accountId+openedAt]', '[strategyId+result]', '[strategyId+closedAt]',
+      ].join(', '),
+      tradingBoxes: 'id, name, status, accountId, createdAt',
+    }).upgrade(async tx => {
+      await tx.table('trades').toCollection().modify((trade: Trade) => {
+        if (trade.commission === undefined) trade.commission = null;
+        if (trade.spread === undefined) trade.spread = null;
+      });
+      await tx.table('tradingBoxes').toCollection().modify((box: TradingBox) => {
         if (box.accountId === undefined) box.accountId = null;
       });
     });
 
-    // نسخه ۲۳: مهاجرت‌های حجیم از چرخهٔ بازشدن دیتابیس خارج شده‌اند.
-    this.version(23).upgrade(() => undefined);
+    // نسخه ۲۳ — briefing پیش از معامله و سناریوهای شرطی MTF
+    // این فیلدها در IndexedDB ایندکس نمی‌شوند و فقط برای داده‌های قدیمی
+    // مقدار پیش‌فرض می‌گیرند تا restore و migration کاملاً backward-compatible بماند.
+    this.version(23).stores({
+      trades: [
+        'id', 'sessionId', 'strategyId', 'accountId', 'boxId',
+        'symbol', 'direction', 'result', 'status', 'openedAt', 'closedAt',
+        '[symbol+openedAt]', '[accountId+openedAt]', '[strategyId+result]', '[strategyId+closedAt]',
+      ].join(', '),
+      tradingBoxes: 'id, name, status, accountId, createdAt',
+    }).upgrade(async tx => {
+      await tx.table('trades').toCollection().modify((trade: Trade) => {
+        if (trade.preTradeBriefing === undefined) trade.preTradeBriefing = null;
+      });
+    });
+
+    // نسخه ۲۴ — ژورنال آفلاین session-based؛ رکوردهای قبلی دست‌نخورده می‌مانند.
+    this.version(24).stores({
+      ...baseStores,
+      trades: [
+        'id', 'sessionId', 'journalSessionId', 'strategyId', 'accountId', 'boxId',
+        'symbol', 'direction', 'result', 'status', 'openedAt', 'closedAt',
+        '[symbol+openedAt]', '[accountId+openedAt]', '[strategyId+result]', '[strategyId+closedAt]',
+      ].join(', '),
+      symbolProfiles: 'id, symbol, assetClass',
+      learningAuditTrail: 'id, tradeId, type, createdAt',
+      profileSnapshots: 'id, createdAt',
+      profileCorrections: 'id, correctedAt',
+      knowledgeNotes: 'id, category, importance, source, status, isActive, isPinned, isRule, createdAt, updatedAt, lastReviewedAt, [category+isActive], [source+status]',
+      knowledgeCategories: 'id, name, isDefault, createdAt',
+      replayDatasets: 'id, symbol, timeframe, type, sourceTradeId, createdAt',
+      replaySessions: 'id, mode, status, symbol, datasetId, sourceTradeId, playlistId, createdAt',
+      replayDecisions: 'id, sessionId, step, action, createdAt, [sessionId+step]',
+      replayPlaylists: 'id, name, createdAt',
+      marketContextSessions: 'id, symbol, status, session, dayOfWeek, setupType, linkedTradeId, createdAt',
+      tradeEvents: 'id, tradeId, eventType, timestamp, createdAt',
+      tradeVersions: 'id, tradeId, changedAt',
+      riskProfiles: 'id',
+      riskViolations: 'id, tradeId, date, createdAt',
+      riskGroups: 'id, name, createdAt',
+      performanceReviews: 'id, periodKey, periodType, createdAt',
+      preTradeChecklists: 'id, isDefault, contextSymbol, contextSession, contextSetup, createdAt',
+      dailyFocus: 'id, date, createdAt',
+      chartScreenshots: 'id, symbol, timeframe, session, screenshotType, tradeId, groupId, date, createdAt, [tradeId+screenshotType], [symbol+date]',
+      screenshotGroups: 'id, symbol, tradeId, date, createdAt',
+      visualPatterns: 'id, name, createdAt',
+      screenshotCollections: 'id, name, isDefault, createdAt',
+      accounts: 'id, name, isDefault, isArchived, createdAt',
+      tradingBoxes: 'id, name, status, accountId, createdAt',
+      journalSessions: 'id, accountId, tradingBoxId, strategyId, strategyVersionId, status, startTime, endTime, [accountId+startTime], [tradingBoxId+startTime], [strategyId+startTime]',
+      journalOptions: 'id, category, enabled, sortOrder, [category+enabled]',
+      journalSessionAnalyses: 'id, sessionId, timeframeOptionId, [sessionId+timeframeOptionId], createdAt',
+      strategyVersions: 'id, strategyId, versionNumber, createdAt',
+      journalTradeData: 'id, &tradeId, journalSessionId, setupGradeOptionId, strategyCompliance, [journalSessionId+createdAt]',
+      journalSessionEvents: 'id, sessionId, typeOptionId, eventAt, createdAt',
+      journalMedia: 'id, sessionId, tradeId, analysisId, category, createdAt',
+    }).upgrade(async tx => {
+      await tx.table('trades').toCollection().modify((trade: Trade) => {
+        if (trade.journalSessionId === undefined) trade.journalSessionId = null;
+      });
+      await tx.table('accounts').toCollection().modify((account: Account) => {
+        if (account.isArchived === undefined) account.isArchived = false;
+      });
+    });
+
+    // نسخه ۲۵ — تحلیل‌ها به‌صورت رویداد مستقل و افزودن رویدادهای Trigger.
+    this.version(25).stores({
+      ...baseStores,
+      trades: [
+        'id', 'sessionId', 'journalSessionId', 'journalAnalysisEventId', 'journalTriggerEventId',
+        'strategyId', 'accountId', 'boxId', 'symbol', 'direction', 'result', 'status', 'openedAt', 'closedAt',
+        '[symbol+openedAt]', '[accountId+openedAt]', '[strategyId+result]', '[strategyId+closedAt]',
+      ].join(', '),
+      symbolProfiles: 'id, symbol, assetClass',
+      learningAuditTrail: 'id, tradeId, type, createdAt',
+      profileSnapshots: 'id, createdAt',
+      profileCorrections: 'id, correctedAt',
+      knowledgeNotes: 'id, category, importance, source, status, isActive, isPinned, isRule, createdAt, updatedAt, lastReviewedAt, [category+isActive], [source+status]',
+      knowledgeCategories: 'id, name, isDefault, createdAt',
+      replayDatasets: 'id, symbol, timeframe, type, sourceTradeId, createdAt',
+      replaySessions: 'id, mode, status, symbol, datasetId, sourceTradeId, playlistId, createdAt',
+      replayDecisions: 'id, sessionId, step, action, createdAt, [sessionId+step]',
+      replayPlaylists: 'id, name, createdAt',
+      marketContextSessions: 'id, symbol, status, session, dayOfWeek, setupType, linkedTradeId, createdAt',
+      tradeEvents: 'id, tradeId, eventType, timestamp, createdAt',
+      tradeVersions: 'id, tradeId, changedAt',
+      riskProfiles: 'id',
+      riskViolations: 'id, tradeId, date, createdAt',
+      riskGroups: 'id, name, createdAt',
+      performanceReviews: 'id, periodKey, periodType, createdAt',
+      preTradeChecklists: 'id, isDefault, contextSymbol, contextSession, contextSetup, createdAt',
+      dailyFocus: 'id, date, createdAt',
+      chartScreenshots: 'id, symbol, timeframe, session, screenshotType, tradeId, groupId, date, createdAt, [tradeId+screenshotType], [symbol+date]',
+      screenshotGroups: 'id, symbol, tradeId, date, createdAt',
+      visualPatterns: 'id, name, createdAt',
+      screenshotCollections: 'id, name, isDefault, createdAt',
+      accounts: 'id, name, isDefault, isArchived, createdAt',
+      tradingBoxes: 'id, name, status, accountId, createdAt',
+      journalSessions: 'id, accountId, tradingBoxId, strategyId, strategyVersionId, status, startTime, endTime, [accountId+startTime], [tradingBoxId+startTime], [strategyId+startTime]',
+      journalOptions: 'id, category, enabled, sortOrder, [category+enabled]',
+      journalSessionAnalyses: 'id, sessionId, timeframeOptionId, createdAt, [sessionId+timeframeOptionId], [sessionId+createdAt]',
+      journalTriggerEvents: 'id, sessionId, timeframeOptionId, analysisEventId, linkedTradeId, status, createdAt, [sessionId+createdAt]',
+      strategyVersions: 'id, strategyId, versionNumber, createdAt',
+      journalTradeData: 'id, &tradeId, journalSessionId, setupGradeOptionId, strategyCompliance, [journalSessionId+createdAt]',
+      journalSessionEvents: 'id, sessionId, typeOptionId, eventAt, createdAt',
+      journalMedia: 'id, sessionId, tradeId, analysisId, triggerId, reviewId, category, createdAt',
+    }).upgrade(async tx => {
+      await tx.table('journalSessions').toCollection().modify((session: JournalSession) => {
+        if (session.marketOptionId === undefined) session.marketOptionId = null;
+        if (session.preTradePsychology === undefined) session.preTradePsychology = '[]';
+        if (session.sessionQuality === undefined) session.sessionQuality = null;
+        if (session.finalReflection === undefined) session.finalReflection = '';
+      });
+      await tx.table('journalSessionAnalyses').toCollection().modify((analysis: JournalSessionAnalysis) => {
+        if (analysis.analysisText === undefined) analysis.analysisText = '';
+        if (analysis.marketContext === undefined) analysis.marketContext = '';
+        if (analysis.scenario === undefined) analysis.scenario = '';
+        if (analysis.triggerContext === undefined) analysis.triggerContext = '';
+        if (analysis.previousTradeId === undefined) analysis.previousTradeId = null;
+        if (analysis.nextTradeId === undefined) analysis.nextTradeId = null;
+      });
+      await tx.table('trades').toCollection().modify((trade: Trade) => {
+        if (trade.journalAnalysisEventId === undefined) trade.journalAnalysisEventId = null;
+        if (trade.journalTriggerEventId === undefined) trade.journalTriggerEventId = null;
+      });
+      await tx.table('journalTradeData').toCollection().modify((tradeData: JournalTradeData) => {
+        if (tradeData.scenarioOutcomeOptionId === undefined) tradeData.scenarioOutcomeOptionId = null;
+      });
+      await tx.table('journalMedia').toCollection().modify((item: JournalMedia) => {
+        if (item.triggerId === undefined) item.triggerId = null;
+        if (item.reviewId === undefined) item.reviewId = null;
+      });
+    });
   }
 }
 
 export const db = new TraderMindDB();
-
-/**
- * تبدیل تدریجی تصاویر قدیمی بعد از بازشدن برنامه.
- * این تابع عمداً توسط startup با تأخیر اجرا می‌شود تا routeهای اصلی ابتدا در دسترس باشند.
- */
-export async function migrateChartScreenshotsToBlobs(batchSize = 20): Promise<number> {
-  const screenshots = await db.chartScreenshots.toArray();
-  let migrated = 0;
-
-  for (let offset = 0; offset < screenshots.length; offset += batchSize) {
-    const batch = screenshots.slice(offset, offset + batchSize);
-    const updates = batch
-      .filter(screenshot =>
-        typeof screenshot.dataUrl === 'string' &&
-        screenshot.dataUrl.startsWith('data:') &&
-        !screenshot.imageBlob
-      )
-      .map(screenshot => {
-        try {
-          return {
-            key: screenshot.id,
-            changes: {
-              imageBlob: dataUrlToBlob(screenshot.dataUrl),
-              dataUrl: '',
-            },
-          };
-        } catch {
-          return null;
-        }
-      })
-      .filter((update): update is { key: string; changes: { imageBlob: Blob; dataUrl: string } } => Boolean(update));
-
-    if (updates.length > 0) {
-      await db.chartScreenshots.bulkUpdate(updates);
-      migrated += updates.length;
-    }
-    await new Promise<void>(resolve => setTimeout(resolve, 0));
-  }
-
-  return migrated;
-}
 
 /** مقادیر پیش‌فرض */
 export const defaultPreTradingState: PreTradingState = {
