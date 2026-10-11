@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "w-IMs2BPLWI3qfZaqTfEc"
+uri = "file://TRADERMIND_COMPREHENSIVE_AUDIT_REPORT.md"
+type = "text"
+title = "گزارش جامع ممیزی TraderMind"
+description = "گزارش فارسی یافته‌های کد، امنیت وابستگی‌ها، محاسبات مالی، آزمون‌ها و وضعیت ساخت Windows، Android و وب."
+logical_id = "bd838d45-a740-4464-b06b-a91f4ad21eb2"
+content_hash = "sha256:96b6752dca31a69097141892697d2e1babc0733d356644f110d5e428b8fc5302"
+size = 33219
+mtime_ms = 1791751538128
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:58fec5ea-2d29-4dca-a064-3096f68f9e10/bd838d45-a740-4464-b06b-a91f4ad21eb2/ed2f52d6-fbde-4662-82b9-05304dcdda7b"
+storage_version_token = "1791751583570623"
+content_type = "text/markdown"
