@@ -81,6 +81,7 @@ const TradeDetail      = lazyWithRecovery(() => import('./pages/TradeDetail'), '
 const DailyJournalList = lazyWithRecovery(() => import('./pages/DailyJournalList'), 'DailyJournalList');
 const DailyEntry       = lazyWithRecovery(() => import('./pages/DailyEntry'), 'DailyEntry');
 const Reports          = lazyWithRecovery(() => import('./pages/Reports'), 'Reports');
+const ReportsCenter    = lazyWithRecovery(() => import('./pages/ReportsCenter'), 'ReportsCenter');
 const SymbolsList      = lazyWithRecovery(() => import('./pages/SymbolsList'), 'SymbolsList');
 const SymbolKnowledge  = lazyWithRecovery(() => import('./pages/SymbolKnowledge'), 'SymbolKnowledge');
 const BackupRestore    = lazyWithRecovery(() => import('./pages/BackupRestore'), 'BackupRestore');
@@ -261,7 +262,8 @@ function Router() {
           <Route path="/journal/daily/:date" component={DailyEntry} />
           <Route path="/journal/insights" component={TradeInsights} />
 
-          <Route path="/reports" component={Reports} />
+          <Route path="/reports" component={ReportsCenter} />
+          <Route path="/reports/classic" component={Reports} />
           <Route path="/analytics/edge" component={EdgeAnalytics} />
           <Route path="/analytics/advanced" component={AdvancedAnalytics} />
           <Route path="/profile" component={TraderProfile} />
